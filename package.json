@@ -1,0 +1,16 @@
+{
+  "name": "openboard-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spray wall app for the open_board_leds controller",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "build:protocol": "npm run build --workspace @openboard/aurora-protocol",
+    "android": "npm run android --workspace @openboard/mobile",
+    "calibrate:web": "node prototypes/calibration-web/serve.mjs"
+  }
+}

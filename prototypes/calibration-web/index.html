@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spray Wall Calibration</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Spray Wall Calibration <span class="tag">prototype</span></h1>
+      <div class="conn">
+        <span id="status" class="status off">disconnected</span>
+        <button id="connect">Connect board</button>
+      </div>
+    </header>
+
+    <main>
+      <aside>
+        <section>
+          <h2>1 · Wall photo</h2>
+          <input type="file" id="photo" accept="image/*" />
+          <p class="hint" id="photo-hint">The photo is not saved across reloads; the hold map is.</p>
+          <label class="row">Zoom <input type="range" id="zoom" min="100" max="400" value="100" /></label>
+        </section>
+
+        <section>
+          <h2>2 · Sweep</h2>
+          <label class="row">
+            Chain length
+            <input type="number" id="chain" min="1" max="1000" value="250" />
+          </label>
+          <label class="row">
+            Start at LED
+            <input type="number" id="start" min="0" value="0" />
+          </label>
+          <div class="btns">
+            <button id="begin" class="primary">Start sweep</button>
+            <button id="stop" disabled>Stop</button>
+          </div>
+
+          <div class="current" id="current-box" hidden>
+            <div class="led-label">LED</div>
+            <div class="led-num" id="led-num">—</div>
+            <p class="hint">Tap where it lit on the photo.</p>
+            <div class="btns">
+              <button id="skip" title="space">No hold (space)</button>
+              <button id="undo" title="u">Undo (u)</button>
+              <button id="relight">Re-light</button>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>3 · Progress</h2>
+          <div class="bar"><div id="bar-fill"></div></div>
+          <dl class="stats">
+            <dt>Mapped</dt><dd id="s-mapped">0</dd>
+            <dt>No hold</dt><dd id="s-skipped">0</dd>
+            <dt>Remaining</dt><dd id="s-left">—</dd>
+            <dt>Median / tap</dt><dd id="s-median">—</dd>
+            <dt>Elapsed</dt><dd id="s-elapsed">0:00</dd>
+            <dt>Projected total</dt><dd id="s-eta" class="eta">—</dd>
+          </dl>
+        </section>
+
+        <section>
+          <h2>4 · Check &amp; export</h2>
+          <div class="btns">
+            <button id="verify">Verify mode</button>
+            <button id="showall">Light all mapped</button>
+            <button id="blank">Blank wall</button>
+          </div>
+          <div class="btns">
+            <button id="export">Export JSON</button>
+            <button id="reset" class="danger">Reset map</button>
+          </div>
+        </section>
+      </aside>
+
+      <div class="viewport" id="viewport">
+        <div class="stage" id="stage">
+          <img id="img" alt="" hidden />
+          <div class="markers" id="markers"></div>
+          <p class="empty" id="empty">Load a photo of your wall to begin.</p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

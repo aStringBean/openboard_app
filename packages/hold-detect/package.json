@@ -1,0 +1,30 @@
+{
+  "name": "@openboard/hold-detect",
+  "version": "0.1.0",
+  "description": "Finds climbing holds in a wall photo, so taps can snap to their centres",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^3.4.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

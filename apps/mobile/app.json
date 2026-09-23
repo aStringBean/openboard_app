@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "OpenBoard",
+    "slug": "openboard",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "openboard",
+    "android": {
+      "package": "com.openboard.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#12141a"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.openboard.app",
+      "supportsTablet": true
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "OpenBoard uses Bluetooth to light holds on your wall."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "OpenBoard needs your photo library to load a picture of your wall.",
+          "cameraPermission": "OpenBoard needs the camera to photograph your wall."
+        }
+      ],
+      "expo-sharing",
+      "expo-sqlite",
+      "expo-router"
+    ]
+  }
+}

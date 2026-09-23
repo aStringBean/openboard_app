@@ -1,0 +1,4 @@
+# React Native's Gradle toolchain does not support the system JDK 26.
+# Pinned here so it applies to this project only.
+[tools]
+java = "temurin-21"
