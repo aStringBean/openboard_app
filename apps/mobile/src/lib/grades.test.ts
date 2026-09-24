@@ -4,6 +4,8 @@ import {
   chooseGrade,
   DEFAULT_GRADE,
   gradeBound,
+  gradeRangeToSteps,
+  stepsToGradeRange,
   GRADES,
   gradeLabel,
   gradeOptions,
@@ -93,5 +95,25 @@ describe("gradeBound", () => {
   it("is exact in Font", () => {
     const o = gradeOptions("font").find((x) => x.label === "6A")!;
     expect(gradeBound(o, "font", "max")).toBe(index("6A"));
+  });
+});
+
+describe("grade slider", () => {
+  it("puts an empty range at the two ends", () => {
+    expect(gradeRangeToSteps(null, null, "font")).toEqual([0, GRADES.length - 1]);
+    expect(stepsToGradeRange(0, GRADES.length - 1, "font")).toEqual({ minGrade: null, maxGrade: null });
+  });
+
+  it("round-trips a Font range", () => {
+    const [lo, hi] = gradeRangeToSteps(index("6A"), index("7A+"), "font");
+    expect(stepsToGradeRange(lo, hi, "font")).toEqual({ minGrade: index("6A"), maxGrade: index("7A+") });
+  });
+
+  it("steps through V grades once each, and a V upper bound covers its Font steps", () => {
+    const vs = gradeOptions("v");
+    const v3 = vs.findIndex((o) => o.label === "V3");
+
+    expect(gradeRangeToSteps(index("6A+"), index("6A+"), "v")).toEqual([v3, v3]);
+    expect(stepsToGradeRange(v3, v3, "v")).toEqual({ minGrade: index("6A"), maxGrade: index("6A+") });
   });
 });

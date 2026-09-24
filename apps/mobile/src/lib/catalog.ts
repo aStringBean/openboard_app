@@ -68,7 +68,9 @@ export interface ProblemFilter {
   /** Inclusive bounds on the consensus grade, as indices. */
   minGrade: number | null;
   maxGrade: number | null;
+  /** Inclusive bounds on the rating, compared as the ★s the list shows. */
   minStars: number | null;
+  maxStars: number | null;
   ticked: TickedFilter;
   /** Adjustable walls: only problems set at the angle the wall is at. */
   currentAngleOnly: boolean;
@@ -82,6 +84,7 @@ export const DEFAULT_FILTER: ProblemFilter = {
   minGrade: null,
   maxGrade: null,
   minStars: null,
+  maxStars: null,
   ticked: "all",
   currentAngleOnly: false,
   holdIds: [],
@@ -125,7 +128,13 @@ export function applyFilter(
       if (search && !p.name.toLowerCase().includes(search)) return false;
       if (f.minGrade !== null && p.consensus < f.minGrade) return false;
       if (f.maxGrade !== null && p.consensus > f.maxGrade) return false;
-      if (f.minStars !== null && (p.stars === null || p.stars < f.minStars)) return false;
+      if (f.minStars !== null || f.maxStars !== null) {
+        /* Unrated problems only pass the full range, which is no filter. */
+        if (p.stars === null) return false;
+        const shown = Math.round(p.stars);
+        if (f.minStars !== null && shown < f.minStars) return false;
+        if (f.maxStars !== null && shown > f.maxStars) return false;
+      }
       if (f.ticked === "ticked" && !p.ticked) return false;
       if (f.ticked === "unticked" && p.ticked) return false;
       if (f.currentAngleOnly && p.angle !== currentAngle) return false;
@@ -139,7 +148,7 @@ export function applyFilter(
 export function activeFilterCount(f: ProblemFilter): number {
   return (
     (f.minGrade !== null || f.maxGrade !== null ? 1 : 0) +
-    (f.minStars !== null ? 1 : 0) +
+    (f.minStars !== null || f.maxStars !== null ? 1 : 0) +
     (f.ticked !== "all" ? 1 : 0) +
     (f.currentAngleOnly ? 1 : 0) +
     (f.holdIds.length ? 1 : 0)
@@ -161,6 +170,7 @@ export function parseFilter(raw: string | undefined): ProblemFilter {
       minGrade: num(v.minGrade),
       maxGrade: num(v.maxGrade),
       minStars: num(v.minStars),
+      maxStars: num(v.maxStars),
       ticked: v.ticked === "ticked" || v.ticked === "unticked" ? v.ticked : "all",
       currentAngleOnly: v.currentAngleOnly === true,
       holdIds: Array.isArray(v.holdIds) ? v.holdIds.filter((h): h is number => Number.isInteger(h)) : [],

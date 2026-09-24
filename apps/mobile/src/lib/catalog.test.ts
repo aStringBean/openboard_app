@@ -119,6 +119,20 @@ describe("applyFilter", () => {
     expect(ids({ minStars: 3 })).toEqual(["Bloc"]);
   });
 
+  it("bounds stars from above too", () => {
+    expect(ids({ maxStars: 2 })).toEqual(["Arete"]);
+    expect(ids({ minStars: 2, maxStars: 2 })).toEqual(["Arete"]);
+  });
+
+  it("judges stars as the list shows them, rounded", () => {
+    /* 2.5 shows as ★★★, so it belongs in a 3-star range, not a 2-star one. */
+    const halfway = [p("Mid", { stars: 2.5 })];
+    const f = (min: number, max: number) =>
+      applyFilter(halfway, { ...DEFAULT_FILTER, minStars: min, maxStars: max }, 40).length;
+    expect(f(3, 3)).toBe(1);
+    expect(f(1, 2)).toBe(0);
+  });
+
   it("splits ticked from unticked", () => {
     expect(ids({ ticked: "ticked" })).toEqual(["Arete", "Bloc"]);
     expect(ids({ ticked: "unticked" })).toEqual(["Crimps"]);
@@ -155,6 +169,7 @@ describe("activeFilterCount", () => {
     expect(activeFilterCount(DEFAULT_FILTER)).toBe(0);
     expect(activeFilterCount({ ...DEFAULT_FILTER, search: "x", sort: "name" })).toBe(0);
     expect(activeFilterCount({ ...DEFAULT_FILTER, minGrade: 3, maxGrade: 5, ticked: "ticked", holdIds: [1, 2] })).toBe(3);
+    expect(activeFilterCount({ ...DEFAULT_FILTER, maxStars: 2 })).toBe(1);
   });
 });
 

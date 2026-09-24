@@ -5,6 +5,7 @@ import {
   newId,
   problemFrame,
   ROLE_STYLE,
+  roleFull,
   ROLES,
   toggleRole,
   validateProblem,
@@ -126,5 +127,38 @@ describe("newId", () => {
       expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     }
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("start and finish limits", () => {
+  const two: ProblemHold[] = [
+    { holdId: 1, role: "start" },
+    { holdId: 2, role: "start" },
+    { holdId: 3, role: "finish" },
+  ];
+
+  it("allow a second start or finish hold", () => {
+    expect(roleFull(two.slice(1), 9, "start")).toBe(false);
+    expect(roleFull(two, 9, "finish")).toBe(false);
+  });
+
+  it("refuse a third", () => {
+    expect(roleFull(two, 9, "start")).toBe(true);
+    /* Moving a hand hold into start counts the same as adding one. */
+    expect(roleFull([...two, { holdId: 9, role: "hand" }], 9, "start")).toBe(true);
+  });
+
+  it("never block taking a hold out of the role", () => {
+    expect(roleFull(two, 1, "start")).toBe(false);
+  });
+
+  it("leave the other roles unlimited", () => {
+    const hands = Array.from({ length: 12 }, (_, i) => ({ holdId: i, role: "hand" as const }));
+    expect(roleFull(hands, 99, "hand")).toBe(false);
+  });
+
+  it("stop a problem with too many from being saved", () => {
+    const three = [...two, { holdId: 4, role: "start" as const }];
+    expect(validateProblem({ name: "x", holds: three })).toEqual(["Use at most two start holds."]);
   });
 });

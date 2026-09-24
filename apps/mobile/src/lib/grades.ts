@@ -108,3 +108,40 @@ export function gradeBound(option: GradeOption, scale: GradeScale, end: "min" | 
   });
   return last;
 }
+
+/**
+ * Slider positions for a stored grade range. The slider steps through the
+ * picker's options — each V grade once, in V — and a missing bound sits at
+ * that end of the scale.
+ */
+export function gradeRangeToSteps(
+  min: number | null,
+  max: number | null,
+  scale: GradeScale,
+): [number, number] {
+  const options = gradeOptions(scale);
+  const find = (g: number | null, fallback: number) => {
+    if (g === null) return fallback;
+    const i = options.findIndex((o) => optionMatches(g, o, scale));
+    return i < 0 ? fallback : i;
+  };
+  return [find(min, 0), find(max, options.length - 1)];
+}
+
+/**
+ * The grade range for slider positions. A thumb at its end of the scale is
+ * no bound at all, so the full range filters nothing — including grades
+ * beyond the ends of the scale, should any ever exist.
+ */
+export function stepsToGradeRange(
+  lo: number,
+  hi: number,
+  scale: GradeScale,
+): { minGrade: number | null; maxGrade: number | null } {
+  const options = gradeOptions(scale);
+  const last = options.length - 1;
+  return {
+    minGrade: lo <= 0 ? null : gradeBound(options[lo]!, scale, "min"),
+    maxGrade: hi >= last ? null : gradeBound(options[hi]!, scale, "max"),
+  };
+}

@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { chooseGrade, gradeBound, gradeOptions, optionMatches, type GradeOption, type GradeScale } from "../lib/grades";
-import { ROLE_STYLE, ROLES, type Role } from "../lib/problem";
+import { chooseGrade, gradeOptions, optionMatches, type GradeScale } from "../lib/grades";
+import { ROLE_LIMITS, ROLE_STYLE, ROLES, type Role } from "../lib/problem";
 import { theme } from "../theme";
 
 /** A horizontally scrolling row of choices. */
@@ -93,7 +93,9 @@ export function RolePalette({
             <Text style={[styles.roleText, on && { color: theme.text }]} numberOfLines={1}>
               {label}
             </Text>
-            <Text style={styles.count}>{counts[role]}</Text>
+            <Text style={styles.count}>
+              {ROLE_LIMITS[role] ? `${counts[role]}/${ROLE_LIMITS[role]!.max}` : counts[role]}
+            </Text>
           </Pressable>
         );
       })}
@@ -183,28 +185,5 @@ export function Segmented<T extends string | number>({
         </Pressable>
       ))}
     </View>
-  );
-}
-
-/** One end of a grade range: any grade, or a bound. */
-export function GradeBoundPicker({
-  value,
-  scale,
-  end,
-  onChange,
-}: {
-  value: number | null;
-  scale: GradeScale;
-  end: "min" | "max";
-  onChange: (v: number | null) => void;
-}) {
-  const options: (GradeOption | null)[] = [null, ...gradeOptions(scale)];
-  return (
-    <Chips
-      options={options}
-      selected={(o) => (o === null ? value === null : value !== null && optionMatches(value, o, scale))}
-      label={(o) => (o === null ? "Any" : o.label)}
-      onPick={(o) => onChange(o === null ? null : gradeBound(o, scale, end))}
-    />
   );
 }

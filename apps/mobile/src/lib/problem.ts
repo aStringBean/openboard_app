@@ -62,14 +62,34 @@ export function countRoles(holds: readonly ProblemHold[]): Record<Role, number> 
   return counts;
 }
 
+/** How many holds a problem may have in a role, where that is limited. */
+export const ROLE_LIMITS: Partial<Record<Role, { min: number; max: number }>> = {
+  start: { min: 1, max: 2 },
+  finish: { min: 1, max: 2 },
+};
+
+/**
+ * Whether giving a hold this role would take the role past its limit. A hold
+ * already in the role is a removal, and never blocked.
+ */
+export function roleFull(holds: readonly ProblemHold[], holdId: number, role: Role): boolean {
+  const limit = ROLE_LIMITS[role];
+  if (!limit) return false;
+  if (holds.some((h) => h.holdId === holdId && h.role === role)) return false;
+  return countRoles(holds)[role] >= limit.max;
+}
+
 /** Why a problem cannot be saved yet, as sentences for the user. Empty when it can. */
 export function validateProblem(p: { name: string; holds: readonly ProblemHold[] }): string[] {
   const counts = countRoles(p.holds);
   const issues: string[] = [];
 
   if (!p.name.trim()) issues.push("Give it a name.");
-  if (counts.start === 0) issues.push("Add at least one start hold.");
-  if (counts.finish === 0) issues.push("Add at least one finish hold.");
+  for (const [role, limit] of Object.entries(ROLE_LIMITS) as [Role, { min: number; max: number }][]) {
+    const label = ROLE_STYLE[role].label.toLowerCase();
+    if (counts[role] < limit.min) issues.push(`Add at least ${limit.min === 1 ? "one" : limit.min} ${label} hold.`);
+    if (counts[role] > limit.max) issues.push(`Use at most ${limit.max === 2 ? "two" : limit.max} ${label} holds.`);
+  }
 
   return issues;
 }

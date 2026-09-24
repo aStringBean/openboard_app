@@ -1,9 +1,13 @@
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { GradeBoundPicker, Segmented } from "../components/Pickers";
+import { Segmented } from "../components/Pickers";
+import { RangeSlider } from "../components/RangeSlider";
 import { DEFAULT_FILTER, SORTS, type Sort, type TickedFilter } from "../lib/catalog";
+import { gradeOptions, gradeRangeToSteps, stepsToGradeRange } from "../lib/grades";
+import { MAX_STARS } from "../lib/tick";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -11,6 +15,15 @@ export function FilterScreen() {
   const { wall, filter, setFilter, gradeScale } = useApp();
   const router = useRouter();
   const set = (patch: Partial<typeof filter>) => setFilter({ ...filter, ...patch });
+
+  const grades = gradeOptions(gradeScale);
+  const lastGrade = grades.length - 1;
+  const [gradeLo, gradeHi] = gradeRangeToSteps(filter.minGrade, filter.maxGrade, gradeScale);
+
+  /* Star positions 0 … MAX_STARS-1 stand for 1★ … MAX_STARS★. */
+  const starsLo = (filter.minStars ?? 1) - 1;
+  const starsHi = (filter.maxStars ?? MAX_STARS) - 1;
+  const stars = (n: number) => "★".repeat(n + 1);
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
@@ -30,34 +43,38 @@ export function FilterScreen() {
           ))}
         </View>
 
-        <Text style={styles.label}>Grade from</Text>
-        <GradeBoundPicker
-          value={filter.minGrade}
-          scale={gradeScale}
-          end="min"
-          onChange={(minGrade) => set({ minGrade })}
+        <Text style={styles.label}>Grade</Text>
+        <RangeSlider
+          steps={grades.length}
+          low={gradeLo}
+          high={gradeHi}
+          ends={[grades[0]!.label, grades[lastGrade]!.label]}
+          label={(lo, hi) =>
+            lo === 0 && hi === lastGrade
+              ? "Any grade"
+              : lo === hi
+                ? grades[lo]!.label
+                : `${grades[lo]!.label} – ${grades[hi]!.label}`
+          }
+          onChange={(lo, hi) => set(stepsToGradeRange(lo, hi, gradeScale))}
         />
-        <Text style={styles.label}>Grade up to</Text>
-        <GradeBoundPicker
-          value={filter.maxGrade}
-          scale={gradeScale}
-          end="max"
-          onChange={(maxGrade) => set({ maxGrade })}
-        />
-        {filter.minGrade !== null && filter.maxGrade !== null && filter.minGrade > filter.maxGrade ? (
-          <Text style={styles.warn}>The lower grade is above the upper one, so nothing will match.</Text>
-        ) : null}
 
         <Text style={styles.label}>Stars</Text>
-        <Segmented<number>
-          options={[
-            { value: 0, label: "Any" },
-            { value: 1, label: "★ 1+" },
-            { value: 2, label: "★ 2+" },
-            { value: 3, label: "★ 3" },
-          ]}
-          value={filter.minStars ?? 0}
-          onChange={(v) => set({ minStars: v === 0 ? null : v })}
+        <RangeSlider
+          steps={MAX_STARS}
+          low={starsLo}
+          high={starsHi}
+          ends={["★", "★".repeat(MAX_STARS)]}
+          label={(lo, hi) =>
+            lo === 0 && hi === MAX_STARS - 1
+              ? "Any rating, unrated included"
+              : lo === hi
+                ? `${stars(lo)} only`
+                : `${stars(lo)} – ${stars(hi)}`
+          }
+          onChange={(lo, hi) =>
+            set({ minStars: lo === 0 ? null : lo + 1, maxStars: hi === MAX_STARS - 1 ? null : hi + 1 })
+          }
         />
 
         <Text style={styles.label}>Ticked</Text>

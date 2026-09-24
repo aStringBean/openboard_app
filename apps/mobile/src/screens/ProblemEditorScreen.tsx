@@ -25,6 +25,9 @@ import {
   countRoles,
   newId,
   problemFrame,
+  roleFull,
+  ROLE_LIMITS,
+  ROLE_STYLE,
   toggleRole,
   validateProblem,
   type Problem,
@@ -51,6 +54,8 @@ export function ProblemEditorScreen() {
   const [holds, setHolds] = useState<ProblemHold[]>([]);
   const [role, setRole] = useState<Role>("start");
   const [issues, setIssues] = useState<string[]>([]);
+  /* Why the last tap was refused, if it was. */
+  const [refused, setRefused] = useState<string | null>(null);
   const { onLayout: onCanvasLayout, width: canvasWidth, height: canvasHeight } = useFitCanvas(cal?.photoAspect);
   const [saving, setSaving] = useState(false);
 
@@ -87,10 +92,17 @@ export function ProblemEditorScreen() {
       const hit = holdNear(cal, x, y, { width: canvasWidth, height: canvasHeight, zoom, hitPx: HIT_PX });
       if (!hit) return;
 
+      if (roleFull(holds, hit.id, role)) {
+        const label = ROLE_STYLE[role].label.toLowerCase();
+        setRefused(`Already ${ROLE_LIMITS[role]!.max} ${label} holds — tap one of them to take it out first.`);
+        return;
+      }
+
+      setRefused(null);
       setHolds((hs) => toggleRole(hs, hit.id, role));
       setIssues([]);
     },
-    [cal, canvasWidth, canvasHeight, role],
+    [cal, canvasWidth, canvasHeight, role, holds],
   );
 
   const save = async () => {
@@ -149,7 +161,15 @@ export function ProblemEditorScreen() {
       </View>
 
       <View style={styles.paletteBar}>
-        <RolePalette active={role} counts={counts} onSelect={setRole} />
+        <RolePalette
+          active={role}
+          counts={counts}
+          onSelect={(r) => {
+            setRole(r);
+            setRefused(null);
+          }}
+        />
+        {refused ? <Text style={styles.refused}>{refused}</Text> : null}
         <Text style={styles.hint}>
           Tap a hold to make it {role === "no_match" ? "a no-match hand" : `a ${role}`} hold; tap it again to
           remove it.
@@ -217,6 +237,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.panel,
   },
   hint: { color: theme.dim, fontSize: 12 },
+  refused: { color: theme.warn, fontSize: 12, fontWeight: "600" },
   panel: { maxHeight: "38%" },
   panelInner: { padding: 12, gap: 8 },
   input: {
