@@ -23,7 +23,7 @@
     "smoke": "npm run build && node tools/frames.mjs > /tmp/openboard-show.json && uv run --quiet --with bleak python3 tools/send.py /tmp/openboard-show.json",
     "frames": "node tools/frames.mjs"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "devDependencies": {
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

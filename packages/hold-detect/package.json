@@ -20,7 +20,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "devDependencies": {
     "jpeg-js": "^0.4.4",
     "pngjs": "^3.4.0",
