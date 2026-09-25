@@ -178,16 +178,19 @@ end $$;
 create trigger problems_immutable before update on public.problems
   for each row execute function public.problems_immutable();
 
--- RESTRICT is the rule the app keeps locally, enforced across every member:
--- a hold that anyone's problem uses cannot be deleted, even by an owner whose
--- device has not yet seen that problem.
+-- The rule the app keeps locally, enforced across every member: a hold that
+-- anyone's problem uses cannot be deleted, even by an owner whose device has
+-- not yet seen that problem. Deferred to commit, so deleting a whole wall
+-- (or its owner's account) can take problems and holds together whatever
+-- order the cascades run in; replace_holds checks it immediately.
 create table public.problem_holds (
   problem_id uuid not null references public.problems(id) on delete cascade,
   wall_id uuid not null,
   hold_id int not null,
   role text not null check (role in ('start', 'hand', 'no_match', 'foot', 'finish')),
   primary key (problem_id, hold_id),
-  foreign key (wall_id, hold_id) references public.holds (wall_id, id) on delete restrict
+  foreign key (wall_id, hold_id) references public.holds (wall_id, id)
+    deferrable initially deferred
 );
 create index problem_holds_by_hold on public.problem_holds (wall_id, hold_id);
 
@@ -424,6 +427,9 @@ language plpgsql set search_path = '' as $$
 declare
   v int;
 begin
+  -- Fail here, on the hold a problem still uses, rather than at commit.
+  set constraints public.problem_holds_wall_id_hold_id_fkey immediate;
+
   insert into public.holds (wall_id, id, x, y, led, source)
   select p_wall, (h->>'id')::int, (h->>'x')::numeric, (h->>'y')::numeric,
          (h->>'led')::int, h->>'source'
@@ -434,6 +440,9 @@ begin
   delete from public.holds
   where wall_id = p_wall
     and id not in (select (h->>'id')::int from jsonb_array_elements(p_holds) h);
+
+  -- Back to deferred for whatever else the transaction does.
+  set constraints public.problem_holds_wall_id_hold_id_fkey deferred;
 
   update public.walls set holds_version = holds_version + 1 where id = p_wall
   returning holds_version into v;

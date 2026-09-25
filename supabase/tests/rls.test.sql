@@ -3,7 +3,7 @@
 -- and every policy behave exactly as they do for the app.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(50);
+select plan(52);
 
 -- Owner, a climber who will join, and a stranger who never does.
 insert into auth.users (id, email) values
@@ -195,6 +195,15 @@ select is((select role from public.wall_members where user_id = auth.uid()), 'ow
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 delete from public.wall_members where user_id = auth.uid();
 select is((select count(*)::int from public.problems), 0, 'a member who leaves loses access');
+
+-- ------------------------------------------------------------ deleting
+-- Problems still use holds here, which must not stop the wall going as a whole.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select lives_ok($$ delete from public.walls where id = '10000000-0000-0000-0000-000000000001' $$,
+  'the owner can delete the wall, problems and holds with it');
+reset role;
+select is((select count(*)::int from public.problems where wall_id = '10000000-0000-0000-0000-000000000001'), 0,
+  'and nothing of it is left');
 
 select * from finish();
 rollback;
