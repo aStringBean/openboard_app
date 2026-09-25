@@ -38,7 +38,18 @@ import { migrate } from "./db/schema";
 import { memoryDb } from "./db/testDb";
 import type { Db } from "./db/types";
 import { newId, type Problem } from "./problem";
-import { createInvite, joinWall, Offline, publishWall, removeMember, syncWall, type PhotoStore } from "./sync";
+import {
+  adoptMyWalls,
+  createInvite,
+  joinWall,
+  Offline,
+  publishWall,
+  removeMember,
+  stopSharing,
+  syncWall,
+  transferWall,
+  type PhotoStore,
+} from "./sync";
 
 const URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
 const ANON = process.env.SUPABASE_ANON_KEY ?? "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
@@ -333,8 +344,53 @@ describe("sync between two phones", () => {
     expect(await pendingChanges(climber.db, wallId)).toEqual([]);
   });
 
+  it("hands the wall to a member, and back", async () => {
+    await transferWall(owner.db, owner.sb, wallId, climber.me);
+    expect((await getWall(owner.db, wallId)).role).toBe("setter");
+
+    await climber.sync(wallId);
+    const theirs = await getWall(climber.db, wallId);
+    expect(theirs.role).toBe("owner");
+
+    /* The new owner's changes to the wall now go up. */
+    await updateWall(climber.db, { ...theirs, name: "Cleo's garage" });
+    expect(await climber.sync(wallId)).toMatchObject({ failed: 0 });
+    await owner.sync(wallId);
+    expect((await getWall(owner.db, wallId)).name).toBe("Cleo's garage");
+
+    await transferWall(climber.db, climber.sb, wallId, owner.me);
+    await owner.sync(wallId);
+    expect((await getWall(owner.db, wallId)).role).toBe("owner");
+  });
+
+  it("gives a new phone the walls its account belongs to", async () => {
+    const fresh = memoryDb();
+    await migrate(fresh);
+
+    expect(await adoptMyWalls(fresh, climber.sb, climber.me)).toEqual([wallId]);
+    expect(await getWall(fresh, wallId)).toMatchObject({ name: "Cleo's garage", cloud: true, role: "setter" });
+    await syncWall(fresh, climber.sb, climber.photos, wallId, climber.me);
+    expect(await listProblems(fresh, wallId, climber.me)).toHaveLength((await listProblems(climber.db, wallId)).length);
+
+    /* Already there: nothing more to add. */
+    expect(await adoptMyWalls(fresh, climber.sb, climber.me)).toEqual([]);
+  });
+
   it("tells a removed member they are out", async () => {
     await removeMember(owner.db, owner.sb, wallId, climber.me);
     expect(await climber.sync(wallId)).toMatchObject({ removed: true });
+  });
+
+  it("stops sharing, keeping everything on the owner's phone", async () => {
+    const before = await listProblems(owner.db, wallId);
+    await stopSharing(owner.db, owner.sb, wallId, owner.me);
+
+    expect(await getWall(owner.db, wallId)).toMatchObject({ cloud: false, role: null });
+    expect(await listProblems(owner.db, wallId)).toHaveLength(before.length);
+    expect(await pendingChanges(owner.db, wallId)).toEqual([]);
+    /* Back to how it was before sharing: the owner's own problem is this phone's again. */
+    expect((await getProblem(owner.db, ownersProblem.id))!.setterId).toBeNull();
+    expect((await admin.from("walls").select("id").eq("id", wallId)).data).toEqual([]);
+    expect((await admin.storage.from("wall-photos").list(wallId)).data).toEqual([]);
   });
 });

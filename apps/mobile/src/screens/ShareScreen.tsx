@@ -9,7 +9,17 @@ import { useFocusReload } from "../components/useFocusReload";
 import { cloud, getDisplayName } from "../lib/cloud";
 import { listMembers, type Member, type OutboxEntry } from "../lib/db/repo";
 import type { Db } from "../lib/db/types";
-import { createInvite, inviteLink, outboxState, publishWall, removeMember, setMemberRole } from "../lib/sync";
+import {
+  createInvite,
+  inviteLink,
+  outboxState,
+  publishWall,
+  removeMember,
+  setMemberRole,
+  stopSharing,
+  transferWall,
+  unshareLocally,
+} from "../lib/sync";
 import type { SetterPolicy } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
@@ -99,6 +109,8 @@ export function ShareScreen() {
             {members.map((m) => (
               <MemberRow key={m.userId} member={m} onChanged={reload} />
             ))}
+
+            {wall.role === "owner" ? <StopSharing others={members.length - 1} /> : null}
 
             {wall.role !== "owner" && me ? (
               <Pressable
@@ -215,12 +227,21 @@ function SyncLine() {
 }
 
 function Removed() {
-  const { wall, forgetWall } = useApp();
+  const { db, wall, me, forgetWall, reloadWalls } = useApp();
   const router = useRouter();
   return (
     <View style={styles.card}>
       <Text style={styles.warnTitle}>You&apos;re no longer a member of {wall.name}</Text>
-      <Text style={styles.dim}>The owner removed you, or deleted the wall.</Text>
+      <Text style={styles.dim}>The owner removed you, or stopped sharing the wall.</Text>
+      <Pressable
+        style={styles.btn}
+        onPress={async () => {
+          await unshareLocally(db, wall.id, me);
+          await reloadWalls();
+        }}
+      >
+        <Text style={styles.btnText}>Keep a copy as my own wall</Text>
+      </Pressable>
       <Pressable
         style={styles.btn}
         onPress={async () => {
@@ -303,8 +324,46 @@ function OwnerTools({ members, onChanged }: { members: Member[]; onChanged: () =
   );
 }
 
+/** Owner only: take the wall off the server, keeping it on this phone. */
+function StopSharing({ others }: { others: number }) {
+  const { db, wall, me, reloadWalls } = useApp();
+  const [busy, setBusy] = useState(false);
+
+  const stop = () =>
+    Alert.alert(
+      `Stop sharing ${wall.name}?`,
+      `It comes off the server${
+        others > 0 ? ` and off ${others === 1 ? "the other member's phone" : `the ${others} other members' phones`}` : ""
+      }. This phone keeps it, with every problem, ascent and comment on it. You can share it again later, but members would need a new invite.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Stop sharing",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await stopSharing(db, cloud, wall.id, me!);
+              await reloadWalls();
+            } catch (err) {
+              Alert.alert("Could not stop sharing", err instanceof Error ? err.message : String(err));
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+
+  return (
+    <Pressable style={[styles.btn, { marginTop: 16 }]} onPress={stop} disabled={busy}>
+      <Text style={[styles.btnText, { color: theme.danger }]}>{busy ? "Stopping…" : "Stop sharing"}</Text>
+    </Pressable>
+  );
+}
+
 function MemberRow({ member, onChanged }: { member: Member; onChanged: () => void }) {
-  const { db, wall, me, syncNow } = useApp();
+  const { db, wall, me, syncNow, reloadWalls } = useApp();
   const owner = wall.role === "owner";
   const isMe = member.userId === me;
 
@@ -320,16 +379,41 @@ function MemberRow({ member, onChanged }: { member: Member; onChanged: () => voi
         Alert.alert("That didn't work", err instanceof Error ? err.message : String(err));
       }
     };
+    const name = member.name || "this member";
+    /* Android shows at most three buttons, so the rarer actions sit a step further in. */
+    const more = () =>
+      Alert.alert(member.name || "Member", undefined, [
+        {
+          text: "Make them the owner",
+          onPress: () =>
+            Alert.alert(
+              `Hand ${wall.name} to ${name}?`,
+              "They get everything you can do as owner: the wall's setup, invites, members, and who can set. You stay on as a setter.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Hand it over",
+                  onPress: act(async () => {
+                    await transferWall(db, cloud, wall.id, member.userId);
+                    await reloadWalls();
+                  }),
+                },
+              ],
+            ),
+        },
+        {
+          text: "Remove from wall",
+          style: "destructive",
+          onPress: act(() => removeMember(db, cloud, wall.id, member.userId)),
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
     Alert.alert(member.name || "Member", `${ROLE_TEXT[member.role]} of ${wall.name}`, [
       {
         text: other === "setter" ? "Make a setter" : "Make a climber",
         onPress: act(() => setMemberRole(db, cloud, wall.id, member.userId, other)),
       },
-      {
-        text: "Remove from wall",
-        style: "destructive",
-        onPress: act(() => removeMember(db, cloud, wall.id, member.userId)),
-      },
+      { text: "More…", onPress: more },
       { text: "Cancel", style: "cancel" },
     ]);
   };

@@ -23,7 +23,7 @@ import type { GradeScale } from "../lib/grades";
 import { loadLegacyCalibration } from "../lib/legacy";
 import { forgetPhotos, keepPhoto, photoStore } from "../lib/photos";
 import { newId } from "../lib/problem";
-import { Offline, syncWall } from "../lib/sync";
+import { adoptMyWalls, Offline, syncWall } from "../lib/sync";
 import type { Wall } from "../lib/wall";
 import { theme } from "../theme";
 
@@ -65,6 +65,8 @@ interface AppState {
   reloadWalls(): Promise<void>;
   /** Removes a wall from this phone, switching to another. */
   forgetWall(id: string): Promise<void>;
+  /** Whose shared walls this phone holds, if it holds any, to warn before another account signs in. */
+  sharedWallsOf: string | null;
   /** Bumped whenever a sync brings in changes, so screens know to reload. */
   revision: number;
   sync: SyncStatus;
@@ -95,6 +97,8 @@ interface Booted {
   db: Db;
   walls: Wall[];
   wallId: string;
+  /** The account this phone's shared walls belong to: the last one signed in. */
+  account: { id: string; email: string } | null;
   gradeScale: GradeScale;
   filter: ProblemFilter;
 }
@@ -140,7 +144,14 @@ async function boot(): Promise<Booted> {
 
   const filter = { ...parseFilter(await getSetting(db, "problemFilter")), search: "" };
 
-  return { db, walls, wallId, gradeScale, filter };
+  let account: Booted["account"] = null;
+  try {
+    account = JSON.parse((await getSetting(db, "account")) ?? "null");
+  } catch {
+    /* Unreadable: treated as no account, so nothing is removed. */
+  }
+
+  return { db, walls, wallId, account, gradeScale, filter };
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -151,6 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncState, setSync] = useState<SyncStatus & { wallId?: string }>(IDLE);
   const { session } = useSession();
   const me = session?.user.id ?? null;
+  const email = session?.user.email ?? "";
 
   useEffect(() => {
     boot().then(setReady, (err: unknown) => setError(err instanceof Error ? err.message : String(err)));
@@ -160,12 +172,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const wallId = ready?.wallId;
   const wall = ready?.walls.find((w) => w.id === ready.wallId);
   const shared = Boolean(wall?.cloud);
+  const account = ready?.account;
 
   const reloadWalls = useCallback(async () => {
     if (!db) return;
     const walls = await listWalls(db);
     setReady((r) => (r ? { ...r, walls } : r));
   }, [db]);
+
+
+  /*
+   * Shared walls belong to the account that joined them. When a different
+   * account signs in, the previous one's come off this phone — they stay on
+   * the server — before any sync can push its queued changes as the new one.
+   */
+  useEffect(() => {
+    if (!db || !me || account === undefined || account?.id === me) return;
+    void (async () => {
+      if (account) {
+        for (const w of (await listWalls(db)).filter((x) => x.cloud)) {
+          await deleteWallLocally(db, w.id);
+          forgetPhotos(w.id);
+        }
+      }
+      let walls = await listWalls(db);
+      if (!walls.length) {
+        await createWall(db, newId(), "My wall");
+        walls = await listWalls(db);
+      }
+      const next = { id: me, email };
+      await setSetting(db, "account", JSON.stringify(next));
+      setReady((r) =>
+        r ? { ...r, walls, account: next, wallId: walls.some((w) => w.id === r.wallId) ? r.wallId : walls[0]!.id } : r,
+      );
+    })();
+  }, [db, me, email, account]);
+
+  /* Once the account is settled, fetch any shared walls it belongs to that this phone lacks. */
+  useEffect(() => {
+    if (!db || !me || account?.id !== me) return;
+    adoptMyWalls(db, cloud, me).then(
+      (added) => {
+        if (added.length) void reloadWalls();
+      },
+      () => {
+        /* Offline: the next sign-in or launch tries again. */
+      },
+    );
+  }, [db, me, account, reloadWalls]);
 
   // ----------------------------------------------------------------- sync
 
@@ -176,7 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const latest = useRef<() => Promise<void>>(async () => {});
 
   const runSync = useCallback(async () => {
-    if (!db || !wallId || !me || !shared) return;
+    if (!db || !wallId || !me || !shared || account?.id !== me) return;
     if (running.current) {
       again.current = true;
       return;
@@ -211,7 +265,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         void latest.current();
       }
     }
-  }, [db, wallId, me, shared]);
+  }, [db, wallId, me, shared, account]);
 
   useEffect(() => {
     latest.current = runSync;
@@ -346,6 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         newWall,
         reloadWalls,
         forgetWall,
+        sharedWallsOf: ready.walls.some((w) => w.cloud) ? (ready.account?.email ?? null) : null,
         revision,
         sync,
         syncNow: runSync,

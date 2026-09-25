@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
 import { friendlyAuthError, getDisplayName, sendCode, setDisplayName, signOut, verifyCode } from "../lib/cloud";
+import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
 /**
@@ -67,6 +68,7 @@ function SignIn() {
         Needed to share a wall with friends and sync problems between phones. Everything you have set up so
         far stays on this phone either way.
       </Text>
+      <OtherAccountNote />
 
       {sentTo === null ? (
         <>
@@ -124,7 +126,20 @@ function SignIn() {
   );
 }
 
+/** Before a different account signs in, say what happens to the shared walls here. */
+function OtherAccountNote() {
+  const { sharedWallsOf } = useApp();
+  if (!sharedWallsOf) return null;
+  return (
+    <Text style={styles.warn}>
+      This phone has shared walls for {sharedWallsOf}. Signing in with a different account takes them off this
+      phone; they stay on the server, and come back when {sharedWallsOf} signs in here again.
+    </Text>
+  );
+}
+
 function SignedIn({ email }: { email: string }) {
+  const { db } = useApp();
   const [name, setName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -162,12 +177,21 @@ function SignedIn({ email }: { email: string }) {
 
       <Pressable
         style={[styles.btn, { marginTop: 16 }]}
-        onPress={() =>
-          Alert.alert("Sign out?", "Your walls and problems stay on this phone.", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Sign out", style: "destructive", onPress: () => void signOut() },
-          ])
-        }
+        onPress={async () => {
+          const unsent = (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM outbox"))?.n ?? 0;
+          Alert.alert(
+            "Sign out?",
+            `Your walls and problems stay on this phone.${
+              unsent
+                ? ` ${unsent} change${unsent > 1 ? "s haven't" : " hasn't"} reached the server yet, and will go up when you sign back in as ${email}.`
+                : ""
+            }`,
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Sign out", style: "destructive", onPress: () => void signOut() },
+            ],
+          );
+        }}
       >
         <Text style={[styles.btnText, { color: theme.danger }]}>Sign out</Text>
       </Pressable>
@@ -195,6 +219,7 @@ const styles = StyleSheet.create({
   code: { fontSize: 28, letterSpacing: 10, textAlign: "center", fontWeight: "700" },
   row: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
   link: { color: theme.accent, fontSize: 14, fontWeight: "600" },
+  warn: { color: theme.warn, fontSize: 13, lineHeight: 18 },
   error: { color: theme.danger, fontSize: 14 },
   ok: { color: theme.good, fontSize: 13 },
   btn: {

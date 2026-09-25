@@ -16,7 +16,7 @@ export function cleanCode(text: string): string {
 }
 
 export function WallsScreen() {
-  const { walls, wall, switchWall, newWall } = useApp();
+  const { db, walls, wall, switchWall, newWall, forgetWall } = useApp();
   const router = useRouter();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -24,6 +24,33 @@ export function WallsScreen() {
   const open = async (w: Wall) => {
     await switchWall(w.id);
     router.back();
+  };
+
+  /* A wall on this phone alone can be deleted here; a shared one is left or
+   * stopped from its Sharing screen, where what that means is spelt out. */
+  const remove = async (w: Wall) => {
+    if (w.cloud) {
+      return Alert.alert(
+        w.name,
+        w.role === "owner"
+          ? "It's shared. To delete it, first stop sharing it from its Sharing screen."
+          : "It's shared. To remove it from this phone, leave it from its Sharing screen.",
+      );
+    }
+    const n = await db.get<{ problems: number; ticks: number }>(
+      `SELECT (SELECT COUNT(*) FROM problem WHERE wall_id = ?) AS problems,
+              (SELECT COUNT(*) FROM tick t JOIN problem p ON p.id = t.problem_id WHERE p.wall_id = ?) AS ticks`,
+      [w.id, w.id],
+    );
+    const what = [
+      "its photo and holds",
+      n?.problems ? `${n.problems} problem${n.problems > 1 ? "s" : ""}` : "",
+      n?.ticks ? `${n.ticks} logged ascent${n.ticks > 1 ? "s" : ""}` : "",
+    ].filter(Boolean);
+    Alert.alert(`Delete ${w.name}?`, `${what.join(", ")} will be gone for good.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => void forgetWall(w.id) },
+    ]);
   };
 
   const create = async () => {
@@ -47,7 +74,12 @@ export function WallsScreen() {
       <Stack.Screen options={{ title: "Walls" }} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {walls.map((w) => (
-          <Pressable key={w.id} style={[styles.wall, w.id === wall.id && styles.current]} onPress={() => open(w)}>
+          <Pressable
+            key={w.id}
+            style={[styles.wall, w.id === wall.id && styles.current]}
+            onPress={() => open(w)}
+            onLongPress={() => void remove(w)}
+          >
             <Text style={styles.wallName}>{w.name}</Text>
             <Text style={styles.dim}>
               {w.cloud && w.role ? ROLE_LABEL[w.role] : "On this phone only"}
@@ -55,6 +87,8 @@ export function WallsScreen() {
             </Text>
           </Pressable>
         ))}
+
+        <Text style={styles.dim}>Long-press a wall to delete it.</Text>
 
         <Text style={styles.section}>Join a wall</Text>
         <Text style={styles.dim}>
@@ -102,7 +136,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
   body: { padding: 16, gap: 10 },
   section: { color: theme.text, fontSize: 17, fontWeight: "700", marginTop: 12 },
-  wall: { padding: 12, gap: 2, borderRadius: 10, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.panel },
+  wall: {
+    padding: 12,
+    gap: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.panel,
+  },
   current: { borderColor: theme.accent },
   wallName: { color: theme.text, fontSize: 16, fontWeight: "600" },
   dim: { color: theme.dim, fontSize: 13 },

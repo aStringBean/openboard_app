@@ -150,6 +150,39 @@ export async function joinWall(db: Db, sb: SupabaseClient, code: string): Promis
   return wallId;
 }
 
+/**
+ * Brings the shared walls an account belongs to onto this phone — a new
+ * phone, a reinstall, or signing back in after someone else. Each arrives
+ * empty, named, for `syncWall` to fill when it is opened. Returns the ids
+ * of walls added.
+ */
+export async function adoptMyWalls(db: Db, sb: SupabaseClient, me: string): Promise<string[]> {
+  const mine = ok(await sb.from("wall_members").select("wall_id, role").eq("user_id", me)) as {
+    wall_id: string;
+    role: WallRole;
+  }[];
+  const missing: typeof mine = [];
+  for (const m of mine) if (!(await db.get("SELECT 1 AS x FROM wall WHERE id = ?", [m.wall_id]))) missing.push(m);
+  if (!missing.length) return [];
+
+  const walls = ok(
+    await sb
+      .from("walls")
+      .select("id, name")
+      .in(
+        "id",
+        missing.map((m) => m.wall_id),
+      ),
+  ) as { id: string; name: string }[];
+  const names = new Map(walls.map((w) => [w.id, w.name]));
+
+  for (const m of missing) {
+    await createWall(db, m.wall_id, names.get(m.wall_id) ?? "Shared wall");
+    await db.run("UPDATE wall SET cloud = 1, my_role = ? WHERE id = ?", [m.role, m.wall_id]);
+  }
+  return missing.map((m) => m.wall_id);
+}
+
 // ------------------------------------------------------------------------- sync
 
 /** Pushes this phone's changes to one shared wall, then pulls everyone else's. */
@@ -760,6 +793,63 @@ export async function setMemberRole(
 export async function removeMember(db: Db, sb: SupabaseClient, wallId: string, userId: string): Promise<void> {
   ok(await sb.from("wall_members").delete().eq("wall_id", wallId).eq("user_id", userId));
   await db.run("DELETE FROM member WHERE wall_id = ? AND user_id = ?", [wallId, userId]);
+}
+
+/**
+ * Hands a wall to another member, who becomes its owner; you stay on as a
+ * setter. Owner only; needs the network.
+ */
+export async function transferWall(db: Db, sb: SupabaseClient, wallId: string, to: string): Promise<void> {
+  ok(await sb.rpc("transfer_wall", { p_wall: wallId, p_to: to }));
+  await db.transaction(async () => {
+    await db.run("UPDATE member SET role = 'setter' WHERE wall_id = ? AND role = 'owner'", [wallId]);
+    await db.run("UPDATE member SET role = 'owner' WHERE wall_id = ? AND user_id = ?", [wallId, to]);
+    await db.run("UPDATE wall SET my_role = 'setter' WHERE id = ?", [wallId]);
+    /* Wall edits queued as owner would now be refused. */
+    await db.run("DELETE FROM outbox WHERE wall_id = ? AND kind IN ('wall', 'holds', 'photo')", [wallId]);
+  });
+}
+
+/**
+ * Takes a wall off the server, and so off every member's phone. This phone
+ * keeps it, with everything anyone set or logged on it, as a wall of its
+ * own again. Owner only; needs the network.
+ */
+export async function stopSharing(db: Db, sb: SupabaseClient, wallId: string, me: string): Promise<void> {
+  /* Photos first: once the wall has gone, nobody owns its folder. */
+  const listed = await sb.storage.from("wall-photos").list(wallId);
+  if (listed.error) storageFailed(listed.error);
+  const paths = (listed.data ?? []).map((f) => `${wallId}/${f.name}`);
+  if (paths.length) {
+    const removed = await sb.storage.from("wall-photos").remove(paths);
+    if (removed.error) storageFailed(removed.error);
+  }
+  ok(await sb.from("walls").delete().eq("id", wallId));
+  await unshareLocally(db, wallId, me);
+}
+
+/**
+ * Makes a wall this phone's alone again, forgetting everything about its
+ * sharing. What `me` made on it becomes this phone's, as it was before the
+ * wall was shared; what others made keeps their names off it.
+ */
+export async function unshareLocally(db: Db, wallId: string, me: string | null): Promise<void> {
+  await db.transaction(async () => {
+    if (me) {
+      await db.run("UPDATE problem SET setter_id = NULL WHERE wall_id = ? AND setter_id = ?", [wallId, me]);
+      const onWall = "problem_id IN (SELECT id FROM problem WHERE wall_id = ?)";
+      await db.run(`UPDATE tick SET user_id = NULL WHERE user_id = ? AND ${onWall}`, [me, wallId]);
+      await db.run(`UPDATE comment SET user_id = NULL WHERE user_id = ? AND ${onWall}`, [me, wallId]);
+      await db.run("UPDATE list SET owner_id = NULL WHERE wall_id = ? AND owner_id = ?", [wallId, me]);
+    }
+    await db.run(
+      `UPDATE wall SET cloud = 0, my_role = NULL, photo_version = 0, holds_version = 0, sync_cursor = NULL,
+                       synced_at = NULL WHERE id = ?`,
+      [wallId],
+    );
+    await db.run("DELETE FROM outbox WHERE wall_id = ?", [wallId]);
+    await db.run("DELETE FROM member WHERE wall_id = ?", [wallId]);
+  });
 }
 
 /** Whether a wall has changes waiting to go up, and whether any were refused. */
