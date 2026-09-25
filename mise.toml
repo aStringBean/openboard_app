@@ -2,3 +2,4 @@
 # Pinned here so it applies to this project only.
 [tools]
 java = "temurin-21"
+supabase = "2.117.0"
