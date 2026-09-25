@@ -3,8 +3,9 @@ import { ActivityIndicator, AppState as RNAppState, StyleSheet, Text, View } fro
 import { Paths } from "expo-file-system";
 
 import { useSession } from "../components/useSession";
+import { accountChange, type Account } from "../lib/account";
 import { parseFilter, type ProblemFilter } from "../lib/catalog";
-import { cloud } from "../lib/cloud";
+import { cloud, SERVER_URL } from "../lib/cloud";
 import { openDb } from "../lib/db/expo";
 import {
   createWall,
@@ -23,7 +24,7 @@ import type { GradeScale } from "../lib/grades";
 import { loadLegacyCalibration } from "../lib/legacy";
 import { forgetPhotos, keepPhoto, photoStore } from "../lib/photos";
 import { newId } from "../lib/problem";
-import { adoptMyWalls, Offline, syncWall } from "../lib/sync";
+import { adoptMyWalls, Offline, syncWall, unshareLocally } from "../lib/sync";
 import type { Wall } from "../lib/wall";
 import { theme } from "../theme";
 
@@ -97,8 +98,8 @@ interface Booted {
   db: Db;
   walls: Wall[];
   wallId: string;
-  /** The account this phone's shared walls belong to: the last one signed in. */
-  account: { id: string; email: string } | null;
+  /** The account, on which server, this phone's shared walls belong to: the last one signed in. */
+  account: Account | null;
   gradeScale: GradeScale;
   filter: ProblemFilter;
 }
@@ -181,36 +182,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [db]);
 
 
-  /*
-   * Shared walls belong to the account that joined them. When a different
-   * account signs in, the previous one's come off this phone — they stay on
-   * the server — before any sync can push its queued changes as the new one.
-   */
+  /* A different account or server: settle this phone's shared walls (see accountChange) before any sync. */
   useEffect(() => {
-    if (!db || !me || account === undefined || account?.id === me) return;
+    if (!db || !me || account === undefined) return;
+    const change = accountChange(account, { id: me, email }, SERVER_URL, ready?.walls ?? []);
+    if (!change.record) return;
+    const record = change.record;
     void (async () => {
-      if (account) {
-        for (const w of (await listWalls(db)).filter((x) => x.cloud)) {
-          await deleteWallLocally(db, w.id);
-          forgetPhotos(w.id);
-        }
+      for (const id of change.unshare) await unshareLocally(db, id, account!.id);
+      for (const id of change.drop) {
+        await deleteWallLocally(db, id);
+        forgetPhotos(id);
       }
       let walls = await listWalls(db);
       if (!walls.length) {
         await createWall(db, newId(), "My wall");
         walls = await listWalls(db);
       }
-      const next = { id: me, email };
-      await setSetting(db, "account", JSON.stringify(next));
+      await setSetting(db, "account", JSON.stringify(record));
       setReady((r) =>
-        r ? { ...r, walls, account: next, wallId: walls.some((w) => w.id === r.wallId) ? r.wallId : walls[0]!.id } : r,
+        r ? { ...r, walls, account: record, wallId: walls.some((w) => w.id === r.wallId) ? r.wallId : walls[0]!.id } : r,
       );
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the walls are read afresh; only who and where matter
   }, [db, me, email, account]);
 
   /* Once the account is settled, fetch any shared walls it belongs to that this phone lacks. */
   useEffect(() => {
-    if (!db || !me || account?.id !== me) return;
+    if (!db || !me || account?.id !== me || account.server !== SERVER_URL) return;
     adoptMyWalls(db, cloud, me).then(
       (added) => {
         if (added.length) void reloadWalls();
@@ -230,7 +229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const latest = useRef<() => Promise<void>>(async () => {});
 
   const runSync = useCallback(async () => {
-    if (!db || !wallId || !me || !shared || account?.id !== me) return;
+    if (!db || !wallId || !me || !shared || account?.id !== me || account.server !== SERVER_URL) return;
     if (running.current) {
       again.current = true;
       return;

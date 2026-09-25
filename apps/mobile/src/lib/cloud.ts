@@ -11,6 +11,8 @@ import { AppState } from "react-native";
  * sets both through EXPO_PUBLIC_ variables at build time.
  */
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://localhost:54321";
+/** Which server this build talks to; shared walls belong to one server. */
+export const SERVER_URL = URL;
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
 
 export const cloud = createClient(URL, KEY, {
