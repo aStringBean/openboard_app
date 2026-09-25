@@ -1,43 +1,63 @@
 import { useCallback, useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ProblemRow } from "../components/ProblemRow";
 import { CommitTextInput } from "../components/CommitTextInput";
+import { useFocusReload } from "../components/useFocusReload";
 import type { ProblemSummary } from "../lib/catalog";
-import { deleteList, getList, listProblems, renameList, setListItems } from "../lib/db/repo";
+import {
+  deleteList,
+  getList,
+  listProblems,
+  memberNames,
+  renameList,
+  setListItems,
+  setListShared,
+} from "../lib/db/repo";
 import { move } from "../lib/order";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
 export function ListDetailScreen() {
-  const { db, wall, gradeScale } = useApp();
+  const { db, wall, me, gradeScale } = useApp();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [name, setName] = useState("");
   const [items, setItems] = useState<ProblemSummary[] | null>(null);
+  /* Someone else's list, shared with the wall: yours to use, not to change. */
+  const [owner, setOwner] = useState<string | null>(null);
+  const [shared, setShared] = useState(false);
 
   const reload = useCallback(() => {
     let live = true;
-    Promise.all([getList(db, id), listProblems(db, wall.id)]).then(([list, all]) => {
-      if (!live || !list) return;
-      const byId = new Map(all.map((p) => [p.id, p]));
-      setName(list.name);
-      setItems(list.problemIds.map((pid) => byId.get(pid)).filter((p): p is ProblemSummary => Boolean(p)));
-    });
+    Promise.all([getList(db, id), listProblems(db, wall.id, me), memberNames(db, wall.id)]).then(
+      ([list, all, names]) => {
+        if (!live || !list) return;
+        const byId = new Map(all.map((p) => [p.id, p]));
+        setName(list.name);
+        setShared(list.shared);
+        setOwner(list.ownerId !== null && list.ownerId !== me ? names.get(list.ownerId) || "someone" : null);
+        setItems(list.problemIds.map((pid) => byId.get(pid)).filter((p): p is ProblemSummary => Boolean(p)));
+      },
+    );
     return () => {
       live = false;
     };
-  }, [db, id, wall.id]);
+  }, [db, id, wall.id, me]);
 
-  useFocusEffect(reload);
+  useFocusReload(reload);
 
   /* Every change rewrites the list's order in one go, so it is shown at once
    * and stored as a whole. */
   const reorder = async (next: ProblemSummary[]) => {
     setItems(next);
-    await setListItems(db, id, next.map((p) => p.id));
+    await setListItems(
+      db,
+      id,
+      next.map((p) => p.id),
+    );
   };
 
   const remove = () =>
@@ -60,16 +80,32 @@ export function ListDetailScreen() {
       <Stack.Screen options={{ title: name || "List" }} />
 
       <View style={styles.head}>
-        <CommitTextInput
-          style={styles.input}
-          initial={name}
-          onChangeText={setName}
-          onCommit={(text) => {
-            const n = text.trim();
-            if (n) void renameList(db, id, n);
-          }}
-          maxLength={40}
-        />
+        {owner !== null ? (
+          <Text style={styles.dim}>Shared by {owner}</Text>
+        ) : (
+          <CommitTextInput
+            style={styles.input}
+            initial={name}
+            onChangeText={setName}
+            onCommit={(text) => {
+              const n = text.trim();
+              if (n) void renameList(db, id, n);
+            }}
+            maxLength={40}
+          />
+        )}
+        {owner === null && wall.cloud ? (
+          <View style={styles.shareRow}>
+            <Text style={styles.dim}>Share with everyone on the wall</Text>
+            <Switch
+              value={shared}
+              onValueChange={(v) => {
+                setShared(v);
+                void setListShared(db, id, v);
+              }}
+            />
+          </View>
+        ) : null}
       </View>
 
       <FlatList
@@ -78,9 +114,7 @@ export function ListDetailScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           items ? (
-            <Text style={[styles.dim, styles.empty]}>
-              Empty. Open any problem and use Lists to add it here.
-            </Text>
+            <Text style={[styles.dim, styles.empty]}>Empty. Open any problem and use Lists to add it here.</Text>
           ) : null
         }
         renderItem={({ item, index }) => (
@@ -90,31 +124,35 @@ export function ListDetailScreen() {
             showAngle={adjustable}
             onPress={() => router.push(`/problem/${item.id}`)}
             right={
-              <View style={styles.reorder}>
-                <Pressable
-                  hitSlop={6}
-                  disabled={index === 0}
-                  onPress={() => items && reorder(move(items, index, index - 1))}
-                >
-                  <Text style={[styles.arrow, index === 0 && styles.arrowOff]}>▲</Text>
-                </Pressable>
-                <Pressable
-                  hitSlop={6}
-                  disabled={!items || index === items.length - 1}
-                  onPress={() => items && reorder(move(items, index, index + 1))}
-                >
-                  <Text style={[styles.arrow, items && index === items.length - 1 && styles.arrowOff]}>▼</Text>
-                </Pressable>
-              </View>
+              owner !== null ? undefined : (
+                <View style={styles.reorder}>
+                  <Pressable
+                    hitSlop={6}
+                    disabled={index === 0}
+                    onPress={() => items && reorder(move(items, index, index - 1))}
+                  >
+                    <Text style={[styles.arrow, index === 0 && styles.arrowOff]}>▲</Text>
+                  </Pressable>
+                  <Pressable
+                    hitSlop={6}
+                    disabled={!items || index === items.length - 1}
+                    onPress={() => items && reorder(move(items, index, index + 1))}
+                  >
+                    <Text style={[styles.arrow, items && index === items.length - 1 && styles.arrowOff]}>▼</Text>
+                  </Pressable>
+                </View>
+              )
             }
           />
         )}
       />
 
       <View style={styles.actions}>
-        <Pressable style={styles.btn} onPress={remove}>
-          <Text style={[styles.btnText, { color: theme.danger }]}>Delete list</Text>
-        </Pressable>
+        {owner === null ? (
+          <Pressable style={styles.btn} onPress={remove}>
+            <Text style={[styles.btnText, { color: theme.danger }]}>Delete list</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           style={[styles.btn, styles.primary, !items?.length && styles.disabled]}
           disabled={!items?.length}
@@ -129,7 +167,8 @@ export function ListDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
-  head: { padding: 12, paddingBottom: 0 },
+  head: { padding: 12, paddingBottom: 0, gap: 8 },
+  shareRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   input: {
     color: theme.text,
     fontSize: 17,

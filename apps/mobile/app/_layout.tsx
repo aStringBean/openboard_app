@@ -7,6 +7,10 @@ import { ConnectChip } from "../src/components/ConnectChip";
 import { AppProvider } from "../src/state/AppProvider";
 import { theme } from "../src/theme";
 
+/* An invite link opens straight onto the join screen; keep the problem list
+ * beneath it, so back and "done" land somewhere. */
+export const unstable_settings = { initialRouteName: "index" };
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

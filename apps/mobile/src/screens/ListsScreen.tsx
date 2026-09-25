@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Stack, useFocusEffect, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { useFocusReload } from "../components/useFocusReload";
 
 import { createList, listLists, type ListSummary } from "../lib/db/repo";
 import { newId } from "../lib/problem";
@@ -9,25 +11,25 @@ import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
 export function ListsScreen() {
-  const { db, wall } = useApp();
+  const { db, wall, me } = useApp();
   const router = useRouter();
   const [lists, setLists] = useState<ListSummary[] | null>(null);
   const [name, setName] = useState("");
 
   const reload = useCallback(() => {
     let live = true;
-    listLists(db, wall.id).then((l) => live && setLists(l));
+    listLists(db, wall.id, me).then((l) => live && setLists(l));
     return () => {
       live = false;
     };
-  }, [db, wall.id]);
+  }, [db, wall.id, me]);
 
-  useFocusEffect(reload);
+  useFocusReload(reload);
 
   const create = async () => {
     if (!name.trim()) return;
     const id = newId();
-    await createList(db, id, wall.id, name);
+    await createList(db, id, wall.id, name, me);
     setName("");
     router.push(`/list/${id}`);
   };
@@ -70,6 +72,7 @@ export function ListsScreen() {
             </Text>
             <Text style={styles.dim}>
               {item.count} problem{item.count === 1 ? "" : "s"}
+              {item.ownerId !== null && item.ownerId !== me ? " · shared with the wall" : item.shared ? " · shared" : ""}
             </Text>
           </Pressable>
         )}

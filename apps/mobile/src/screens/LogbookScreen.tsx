@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { Stack, useFocusEffect, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { starsText } from "../components/Pickers";
+import { useFocusReload } from "../components/useFocusReload";
 import { logbook, type LogEntry } from "../lib/db/repo";
 import { gradeLabel } from "../lib/grades";
 import { isFlash, shortDate } from "../lib/tick";
@@ -12,18 +13,18 @@ import { theme } from "../theme";
 
 /** Every ascent on the wall, newest first. */
 export function LogbookScreen() {
-  const { db, wall, gradeScale } = useApp();
+  const { db, wall, me, gradeScale } = useApp();
   const router = useRouter();
   const [entries, setEntries] = useState<LogEntry[] | null>(null);
 
-  useFocusEffect(
+  useFocusReload(
     useCallback(() => {
       let live = true;
-      logbook(db, wall.id).then((e) => live && setEntries(e));
+      logbook(db, wall.id, me).then((e) => live && setEntries(e));
       return () => {
         live = false;
       };
-    }, [db, wall.id]),
+    }, [db, wall.id, me]),
   );
 
   const problems = new Set(entries?.map((e) => e.problemId)).size;

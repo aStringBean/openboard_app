@@ -402,7 +402,7 @@ async function pull(db: Db, sb: SupabaseClient, photos: PhotoStore, wallId: stri
   const cursors: Cursors = local.sync_cursor ? JSON.parse(local.sync_cursor) : {};
 
   await pullMembers(db, sb, wallId, me);
-  if (!(await isPending(db, "wall", wallId))) await applyWall(db, wallId, server);
+  if (!(await isPending(db, "wall", wallId))) await applyWall(db, wallId, server, me);
 
   if (server.photo_version > local.photo_version && server.photo_path && !(await isPending(db, "photo", wallId))) {
     await pullPhoto(db, sb, photos, wallId, server);
@@ -436,13 +436,19 @@ interface ServerWall {
   holds_version: number;
 }
 
-async function applyWall(db: Db, wallId: string, w: ServerWall) {
-  const row = await db.get<{ calibration: string }>("SELECT calibration FROM wall WHERE id = ?", [wallId]);
+async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
+  const row = await db.get<{ calibration: string; current_angle: number }>(
+    "SELECT calibration, current_angle FROM wall WHERE id = ?",
+    [wallId],
+  );
   const state = { ...(row ? JSON.parse(row.calibration) : {}), chainLength: w.chain_length };
+  /* Members keep the angle they last saw the wall at, while it is one the wall offers. */
+  const keepAngle = w.owner_id !== me && row !== undefined && w.angles.includes(row.current_angle);
+  const angle = keepAngle ? row.current_angle : w.current_angle;
   await db.run(
     `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, calibration = ?
      WHERE id = ?`,
-    [w.name, w.angle_mode, JSON.stringify(w.angles), w.current_angle, w.setter_policy, JSON.stringify(state), wallId],
+    [w.name, w.angle_mode, JSON.stringify(w.angles), angle, w.setter_policy, JSON.stringify(state), wallId],
   );
 }
 

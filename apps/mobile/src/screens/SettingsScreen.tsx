@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -7,7 +7,14 @@ import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
 import { gradeLabel, type GradeScale } from "../lib/grades";
-import { angleRange, DEFAULT_ADJUSTABLE, DEFAULT_FIXED_ANGLE, withAngles, type AngleMode } from "../lib/wall";
+import {
+  angleRange,
+  canEditWall,
+  DEFAULT_ADJUSTABLE,
+  DEFAULT_FIXED_ANGLE,
+  withAngles,
+  type AngleMode,
+} from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -33,23 +40,6 @@ function NumberField({ label, value, onCommit }: { label: string; value: number;
 export function SettingsScreen() {
   const { wall, saveWall, gradeScale, setGradeScale } = useApp();
   const router = useRouter();
-  const [range, setRange] = useState(() =>
-    wall.angleMode === "adjustable" && wall.angles.length > 1
-      ? { min: wall.angles[0]!, max: wall.angles[wall.angles.length - 1]!, step: wall.angles[1]! - wall.angles[0]! }
-      : { ...DEFAULT_ADJUSTABLE },
-  );
-
-  const setMode = (mode: AngleMode) => {
-    if (mode === wall.angleMode) return;
-    const angles = mode === "fixed" ? [wall.currentAngle || DEFAULT_FIXED_ANGLE] : angleRange(range.min, range.max, range.step);
-    void saveWall(withAngles(wall, mode, angles));
-  };
-
-  const setRangePart = (part: "min" | "max" | "step", n: number) => {
-    const next = { ...range, [part]: n };
-    setRange(next);
-    void saveWall(withAngles(wall, "adjustable", angleRange(next.min, next.max, next.step)));
-  };
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
@@ -61,58 +51,31 @@ export function SettingsScreen() {
 
         <Text style={styles.section}>Wall</Text>
 
-        <Pressable style={styles.link} onPress={() => router.push("/setup")}>
-          <Text style={styles.linkTitle}>Wall setup</Text>
-          <Text style={styles.dim}>Photo, hold detection, mapping LEDs to holds</Text>
+        <Pressable style={styles.link} onPress={() => router.push("/share")}>
+          <Text style={styles.linkTitle}>Sharing</Text>
+          <Text style={styles.dim}>
+            {wall.cloud ? "Invites, members, who can set problems" : "Only on this phone — share it with others"}
+          </Text>
         </Pressable>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Name</Text>
-          <CommitTextInput
-            style={styles.input}
-            initial={wall.name}
-            maxLength={40}
-            onCommit={(text) => {
-              const name = text.trim();
-              if (name) void saveWall({ ...wall, name });
-            }}
-          />
-        </View>
-
-        <Text style={styles.label}>Angle</Text>
-        <Segmented
-          options={[
-            { value: "fixed", label: "Fixed" },
-            { value: "adjustable", label: "Adjustable" },
-          ]}
-          value={wall.angleMode}
-          onChange={setMode}
-        />
-
-        {wall.angleMode === "fixed" ? (
-          <NumberField
-            key="fixed"
-            label="Wall angle (degrees overhanging)"
-            value={wall.currentAngle}
-            onCommit={(a) => void saveWall(withAngles(wall, "fixed", [a]))}
-          />
+        {canEditWall(wall) ? (
+          <WallSettings />
         ) : (
           <>
-            <View style={styles.rangeRow}>
-              <NumberField label="From" value={range.min} onCommit={(n) => setRangePart("min", n)} />
-              <NumberField label="To" value={range.max} onCommit={(n) => setRangePart("max", n)} />
-              <NumberField label="Step" value={range.step} onCommit={(n) => setRangePart("step", n)} />
-            </View>
-            <Text style={styles.label}>The wall is at</Text>
-            <AnglePicker
-              angles={wall.angles}
-              value={wall.currentAngle}
-              onChange={(currentAngle) => void saveWall({ ...wall, currentAngle })}
-            />
             <Text style={styles.dim}>
-              Problems are graded at the angle they are set at, so a 40° problem climbed at 30° is a different
-              climb. New problems use the angle the wall is at.
+              {wall.name}&apos;s photo, holds, name and angles belong to its owner, and update here when they change
+              them.
             </Text>
+            {wall.angleMode === "adjustable" ? (
+              <>
+                <Text style={styles.label}>The wall is at</Text>
+                <AnglePicker
+                  angles={wall.angles}
+                  value={wall.currentAngle}
+                  onChange={(currentAngle) => void saveWall({ ...wall, currentAngle })}
+                />
+              </>
+            ) : null}
           </>
         )}
 
@@ -127,11 +90,94 @@ export function SettingsScreen() {
           onChange={(s) => void setGradeScale(s)}
         />
         <Text style={styles.dim}>
-          Shown as {gradeLabel(5, gradeScale)}. Grades are stored once and convert both ways, so switching never
-          changes a problem's grade.
+          Shown as {gradeLabel(5, gradeScale)}. Grades are stored once and convert both ways, so switching never changes
+          a problem&apos;s grade.
         </Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** What only the wall's owner may change: setup, name and angles. */
+function WallSettings() {
+  const { wall, saveWall } = useApp();
+  const router = useRouter();
+  const [range, setRange] = useState(() =>
+    wall.angleMode === "adjustable" && wall.angles.length > 1
+      ? { min: wall.angles[0]!, max: wall.angles[wall.angles.length - 1]!, step: wall.angles[1]! - wall.angles[0]! }
+      : { ...DEFAULT_ADJUSTABLE },
+  );
+
+  const setMode = (mode: AngleMode) => {
+    if (mode === wall.angleMode) return;
+    const angles =
+      mode === "fixed" ? [wall.currentAngle || DEFAULT_FIXED_ANGLE] : angleRange(range.min, range.max, range.step);
+    void saveWall(withAngles(wall, mode, angles));
+  };
+
+  const setRangePart = (part: "min" | "max" | "step", n: number) => {
+    const next = { ...range, [part]: n };
+    setRange(next);
+    void saveWall(withAngles(wall, "adjustable", angleRange(next.min, next.max, next.step)));
+  };
+
+  return (
+    <>
+      <Pressable style={styles.link} onPress={() => router.push("/setup")}>
+        <Text style={styles.linkTitle}>Wall setup</Text>
+        <Text style={styles.dim}>Photo, hold detection, mapping LEDs to holds</Text>
+      </Pressable>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>Name</Text>
+        <CommitTextInput
+          style={styles.input}
+          initial={wall.name}
+          maxLength={40}
+          onCommit={(text) => {
+            const name = text.trim();
+            if (name) void saveWall({ ...wall, name });
+          }}
+        />
+      </View>
+
+      <Text style={styles.label}>Angle</Text>
+      <Segmented
+        options={[
+          { value: "fixed", label: "Fixed" },
+          { value: "adjustable", label: "Adjustable" },
+        ]}
+        value={wall.angleMode}
+        onChange={setMode}
+      />
+
+      {wall.angleMode === "fixed" ? (
+        <NumberField
+          key="fixed"
+          label="Wall angle (degrees overhanging)"
+          value={wall.currentAngle}
+          onCommit={(a) => void saveWall(withAngles(wall, "fixed", [a]))}
+        />
+      ) : (
+        <>
+          <View style={styles.rangeRow}>
+            <NumberField label="From" value={range.min} onCommit={(n) => setRangePart("min", n)} />
+            <NumberField label="To" value={range.max} onCommit={(n) => setRangePart("max", n)} />
+            <NumberField label="Step" value={range.step} onCommit={(n) => setRangePart("step", n)} />
+          </View>
+          <Text style={styles.label}>The wall is at</Text>
+          <AnglePicker
+            angles={wall.angles}
+            value={wall.currentAngle}
+            onChange={(currentAngle) => void saveWall({ ...wall, currentAngle })}
+          />
+          <Text style={styles.dim}>
+            Problems are graded at the angle they are set at, so a 40° problem climbed at 30° is a different climb. New
+            problems use the angle the wall is at.
+          </Text>
+        </>
+      )}
+    </>
   );
 }
 
@@ -152,7 +198,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.panel,
   },
   rangeRow: { flexDirection: "row", gap: 8 },
-  link: { padding: 12, gap: 2, borderRadius: 10, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.panel },
+  link: {
+    padding: 12,
+    gap: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: theme.panel,
+  },
   linkTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
   dim: { color: theme.dim, fontSize: 13 },
 });

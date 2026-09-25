@@ -1,28 +1,29 @@
 import { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Stack, useFocusEffect, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnglePicker } from "../components/Pickers";
 import { ProblemRow } from "../components/ProblemRow";
+import { useFocusReload } from "../components/useFocusReload";
 import { activeFilterCount, applyFilter, DEFAULT_FILTER, SORTS, type ProblemSummary } from "../lib/catalog";
 import { loadCalibration, listProblems } from "../lib/db/repo";
-import { gradeLabel } from "../lib/grades";
+import { canEditWall, canSet } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
 export function ProblemListScreen() {
-  const { db, wall, gradeScale, saveWall, filter, setFilter } = useApp();
+  const { db, wall, walls, me, sync, gradeScale, saveWall, filter, setFilter } = useApp();
   const router = useRouter();
   const [problems, setProblems] = useState<ProblemSummary[] | null>(null);
   const [wallReady, setWallReady] = useState(true);
 
   /* Reload whenever the screen comes back into view: a problem may have been
    * added, edited or deleted, or the wall set up, in the meantime. */
-  useFocusEffect(
+  useFocusReload(
     useCallback(() => {
       let live = true;
-      Promise.all([listProblems(db, wall.id), loadCalibration(db, wall.id)]).then(([list, cal]) => {
+      Promise.all([listProblems(db, wall.id, me), loadCalibration(db, wall.id)]).then(([list, cal]) => {
         if (!live) return;
         setProblems(list);
         setWallReady(Boolean(cal.photoUri) && cal.holds.length > 0);
@@ -30,7 +31,7 @@ export function ProblemListScreen() {
       return () => {
         live = false;
       };
-    }, [db, wall.id]),
+    }, [db, wall.id, me]),
   );
 
   const adjustable = wall.angleMode === "adjustable";
@@ -42,7 +43,31 @@ export function ProblemListScreen() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
-      <Stack.Screen options={{ title: wall.name }} />
+      <Stack.Screen
+        options={{
+          /* The title switches walls, once there is more than one to switch between. */
+          headerTitle: () => (
+            <Pressable onPress={() => router.push("/walls")} hitSlop={8}>
+              <Text style={styles.title} numberOfLines={1}>
+                {wall.name} <Text style={styles.titleCaret}>▾</Text>
+              </Text>
+              {wall.cloud ? (
+                <Text style={[styles.subtitle, (sync.offline || sync.refused > 0 || !me) && { color: theme.warn }]}>
+                  {!me
+                    ? "signed out · not syncing"
+                    : sync.running
+                      ? "syncing…"
+                      : sync.offline
+                        ? "offline"
+                        : sync.refused
+                          ? `${sync.refused} change${sync.refused > 1 ? "s" : ""} refused`
+                          : `shared${walls.length > 1 ? "" : " wall"}`}
+                </Text>
+              ) : null}
+            </Pressable>
+          ),
+        }}
+      />
 
       <View style={styles.toolbar}>
         <Pressable style={styles.tool} onPress={() => router.push("/lists")}>
@@ -50,6 +75,9 @@ export function ProblemListScreen() {
         </Pressable>
         <Pressable style={styles.tool} onPress={() => router.push("/logbook")}>
           <Text style={styles.toolText}>Logbook</Text>
+        </Pressable>
+        <Pressable style={styles.tool} onPress={() => router.push("/share")}>
+          <Text style={styles.toolText}>Share</Text>
         </Pressable>
         <Pressable style={styles.tool} onPress={() => router.push("/settings")}>
           <Text style={styles.toolText}>Settings</Text>
@@ -99,7 +127,16 @@ export function ProblemListScreen() {
         </View>
       ) : null}
 
-      {!wallReady ? (
+      {!wallReady && !canEditWall(wall) ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Waiting for the wall</Text>
+          <Text style={styles.dim}>
+            {sync.running
+              ? "Fetching its photo and holds…"
+              : "Its photo and holds come from the wall's owner, once they have set it up."}
+          </Text>
+        </View>
+      ) : !wallReady ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Set up your wall first</Text>
           <Text style={styles.dim}>
@@ -117,7 +154,11 @@ export function ProblemListScreen() {
           ListEmptyComponent={
             problems ? (
               <Text style={[styles.dim, styles.empty]}>
-                {problems.length ? "Nothing matches these filters." : "No problems yet — set the first one."}
+                {problems.length
+                  ? "Nothing matches these filters."
+                  : canSet(wall)
+                    ? "No problems yet — set the first one."
+                    : "No problems yet."}
               </Text>
             ) : null
           }
@@ -133,7 +174,7 @@ export function ProblemListScreen() {
         />
       )}
 
-      {wallReady ? (
+      {wallReady && canSet(wall) ? (
         <Pressable style={[styles.btn, styles.primary, styles.newBtn]} onPress={() => router.push("/problem/edit")}>
           <Text style={styles.primaryText}>New problem</Text>
         </Pressable>
@@ -155,6 +196,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.panel,
   },
   toolText: { color: theme.text, fontSize: 13, fontWeight: "500" },
+  title: { color: theme.text, fontSize: 18, fontWeight: "600", maxWidth: 220 },
+  titleCaret: { color: theme.dim, fontSize: 14 },
+  subtitle: { color: theme.dim, fontSize: 11 },
   angleBar: { paddingHorizontal: 12, paddingTop: 10, gap: 6 },
   filterBar: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 },
   search: {

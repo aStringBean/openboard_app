@@ -96,7 +96,10 @@ export async function updateWall(db: Db, wall: Wall): Promise<void> {
     "UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ? WHERE id = ?",
     [wall.name, wall.angleMode, JSON.stringify(wall.angles), wall.currentAngle, wall.setterPolicy, wall.id],
   );
-  await enqueue(db, "wall", wall.id, wall.id, "upsert");
+  /* On a shared wall only the owner's changes go up; a member's only
+   * change is which angle the wall is at, and that stays on their phone. */
+  const row = await db.get<{ my_role: WallRole | null }>("SELECT my_role FROM wall WHERE id = ?", [wall.id]);
+  if (row?.my_role === null || row?.my_role === "owner") await enqueue(db, "wall", wall.id, wall.id, "upsert");
 }
 
 /**
@@ -127,6 +130,13 @@ export interface OutboxEntry {
   error: string | null;
 }
 
+let outboxListener: ((wallId: string) => void) | null = null;
+
+/** Hears about every change queued for the server — the app syncs soon after one. */
+export function onOutbox(listener: ((wallId: string) => void) | null): void {
+  outboxListener = listener;
+}
+
 /**
  * Records a change for the server — only on a shared wall; a wall that stays
  * on this phone has nothing to send. Re-enqueueing a row replaces its entry
@@ -147,6 +157,7 @@ export async function enqueue(
      ON CONFLICT (kind, id) DO UPDATE SET op = excluded.op, seq = excluded.seq, error = NULL`,
     [kind, id, wallId, op],
   );
+  outboxListener?.(wallId);
 }
 
 export async function pendingChanges(db: Db, wallId: string): Promise<OutboxEntry[]> {

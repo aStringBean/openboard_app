@@ -43,6 +43,7 @@ import {
 import { detectHoldsInPhoto } from "../lib/detectPhoto";
 import { findOutliers } from "../lib/outliers";
 import { loadCalibration, problemsUsingHold, saveCalibration, usedHoldIds } from "../lib/db/repo";
+import { keepPhoto } from "../lib/photos";
 import { useApp } from "../state/AppProvider";
 import { CALIBRATION_COLOUR, theme, VERIFY_COLOUR } from "../theme";
 
@@ -386,15 +387,22 @@ export function CalibrationScreen() {
       if (!ok) return;
     }
 
+    let photoUri: string;
+    try {
+      photoUri = await keepPhoto(wall.id, asset.uri);
+    } catch (err) {
+      return Alert.alert("Could not keep that photo", err instanceof Error ? err.message : String(err));
+    }
+
     /* Untouched detections from the old photo mean nothing on the new one. */
     commit({
       ...mergeDetections(calRef.current, [], usedRef.current),
-      photoUri: asset.uri,
+      photoUri,
       photoAspect: asset.width && asset.height ? asset.width / asset.height : 0.75,
     });
     setSelectedId(null);
 
-    await runDetection(asset.uri);
+    await runDetection(photoUri);
   };
 
   const exportJson = async () => {

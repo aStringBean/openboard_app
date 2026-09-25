@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
 import { starsText } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas } from "../components/WallCanvas";
+import { useFocusReload } from "../components/useFocusReload";
 import * as board from "../lib/board";
 import type { Calibration } from "../lib/calibration";
 import type { ProblemSummary } from "../lib/catalog";
@@ -22,7 +23,7 @@ import { theme } from "../theme";
  * pressing Next.
  */
 export function CircuitScreen() {
-  const { db, wall, gradeScale } = useApp();
+  const { db, wall, me, gradeScale } = useApp();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const conn = useConnection();
@@ -35,7 +36,7 @@ export function CircuitScreen() {
   const { onLayout: onCanvasLayout, width: canvasWidth, height: canvasHeight } = useFitCanvas(cal?.photoAspect);
 
   /* Loaded on focus so ticks logged mid-circuit show when coming back. */
-  useFocusEffect(
+  useFocusReload(
     useCallback(() => {
       let live = true;
       (async () => {
@@ -43,7 +44,7 @@ export function CircuitScreen() {
         if (!list) return;
         const [ps, all, c] = await Promise.all([
           Promise.all(list.problemIds.map((pid) => getProblem(db, pid))),
-          listProblems(db, wall.id),
+          listProblems(db, wall.id, me),
           loadCalibration(db, wall.id),
         ]);
         if (!live) return;
@@ -55,7 +56,7 @@ export function CircuitScreen() {
       return () => {
         live = false;
       };
-    }, [db, id, wall.id]),
+    }, [db, id, wall.id, me]),
   );
 
   const current = problems?.[index];

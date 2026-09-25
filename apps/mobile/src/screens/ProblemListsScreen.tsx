@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { useFocusReload } from "../components/useFocusReload";
 
 import { createList, listLists, listsContaining, toggleInList, type ListSummary } from "../lib/db/repo";
 import { newId } from "../lib/problem";
@@ -10,7 +12,7 @@ import { theme } from "../theme";
 
 /** Puts one problem into, or takes it out of, any of the wall's lists. */
 export function ProblemListsScreen() {
-  const { db, wall } = useApp();
+  const { db, wall, me } = useApp();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [lists, setLists] = useState<ListSummary[] | null>(null);
   const [inLists, setInLists] = useState<Set<string>>(new Set());
@@ -18,17 +20,18 @@ export function ProblemListsScreen() {
 
   const reload = useCallback(() => {
     let live = true;
-    Promise.all([listLists(db, wall.id), listsContaining(db, id)]).then(([l, c]) => {
+    Promise.all([listLists(db, wall.id, me), listsContaining(db, id)]).then(([l, c]) => {
       if (!live) return;
-      setLists(l);
+      /* Only your own lists: a list someone shared is theirs to change. */
+      setLists(l.filter((x) => x.ownerId === null || x.ownerId === me));
       setInLists(c);
     });
     return () => {
       live = false;
     };
-  }, [db, id, wall.id]);
+  }, [db, id, wall.id, me]);
 
-  useFocusEffect(reload);
+  useFocusReload(reload);
 
   const toggle = async (listId: string) => {
     await toggleInList(db, listId, id);
@@ -39,7 +42,7 @@ export function ProblemListsScreen() {
   const create = async () => {
     if (!name.trim()) return;
     const listId = newId();
-    await createList(db, listId, wall.id, name);
+    await createList(db, listId, wall.id, name, me);
     await toggleInList(db, listId, id);
     setName("");
     reload();

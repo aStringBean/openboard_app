@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,7 +33,7 @@ import {
   type ProblemHold,
   type Role,
 } from "../lib/problem";
-import { currentUserId } from "../lib/cloud";
+import { canEditProblem, canSet } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -42,7 +41,7 @@ import { theme } from "../theme";
 const HIT_PX = 24;
 
 export function ProblemEditorScreen() {
-  const { db, wall, gradeScale } = useApp();
+  const { db, wall, me, gradeScale } = useApp();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const conn = useConnection();
@@ -120,7 +119,7 @@ export function ProblemEditorScreen() {
       grade,
       angle,
       holds,
-      setterId: original ? original.setterId : currentUserId(),
+      setterId: original ? original.setterId : me,
       createdAt: original?.createdAt ?? now,
       updatedAt: now,
     };
@@ -136,10 +135,24 @@ export function ProblemEditorScreen() {
     }
   };
 
-  if (!cal) {
+  if (!cal || (id && !original)) {
     return (
       <View style={[styles.root, styles.centre]}>
         <ActivityIndicator color={theme.accent} />
+      </View>
+    );
+  }
+
+  /* The buttons that lead here are hidden too; this covers a stale screen,
+   * say after the owner changed the setter policy. */
+  if (original ? !canEditProblem(wall, original.setterId, me) : !canSet(wall)) {
+    return (
+      <View style={[styles.root, styles.centre, { padding: 24 }]}>
+        <Text style={styles.hint}>
+          {original
+            ? "Only the problem's setter, or the wall's owner, can change it."
+            : "Only the wall's setters can set problems here. Ask its owner to make you one."}
+        </Text>
       </View>
     );
   }
@@ -204,7 +217,7 @@ export function ProblemEditorScreen() {
 
         {unlit > 0 ? (
           <Text style={styles.note}>
-            {unlit} hold{unlit > 1 ? "s have" : " has"} no LED beside it, so won't light on the wall.
+            {unlit} hold{unlit > 1 ? "s have" : " has"} no LED beside it, so won&apos;t light on the wall.
           </Text>
         ) : null}
 
