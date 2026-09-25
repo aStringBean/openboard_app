@@ -40,7 +40,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:sync": "INTEGRATION=1 vitest run",
+    "lint": "expo lint"
   },
   "private": true
 }

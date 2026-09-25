@@ -34,6 +34,7 @@ import {
   type ProblemHold,
   type Role,
 } from "../lib/problem";
+import { currentUserId } from "../lib/cloud";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -119,6 +120,7 @@ export function ProblemEditorScreen() {
       grade,
       angle,
       holds,
+      setterId: original ? original.setterId : currentUserId(),
       createdAt: original?.createdAt ?? now,
       updatedAt: now,
     };

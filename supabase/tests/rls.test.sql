@@ -3,7 +3,7 @@
 -- and every policy behave exactly as they do for the app.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(48);
+select plan(50);
 
 -- Owner, a climber who will join, and a stranger who never does.
 insert into auth.users (id, email) values
@@ -34,7 +34,7 @@ select lives_ok($$ select public.replace_holds('10000000-0000-0000-0000-00000000
     {"id":3,"x":0.3,"y":0.3,"led":null,"source":"detected"}]') $$,
   'the owner can set the holds');
 select is((select holds_version from public.walls), 1, 'replacing holds bumps the version');
-select is((select x from public.holds where id = 0), 0.1::double precision, 'hold positions are stored exactly');
+select is((select x from public.holds where id = 0), 0.1::numeric, 'hold positions are stored exactly');
 
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
 select is((select count(*)::int from public.walls), 0, 'a stranger cannot see the wall');
@@ -124,6 +124,10 @@ select throws_ok($$ select public.save_problem('{"id":"20000000-0000-0000-0000-0
   '42501', NULL, 'a member cannot edit someone else''s problem');
 select is((select name from public.problems where id = '20000000-0000-0000-0000-000000000003'), 'Owner''s',
   '(unchanged)');
+select throws_ok($$ select public.delete_problem('20000000-0000-0000-0000-000000000003') $$,
+  '42501', NULL, 'nor take it down');
+select lives_ok($$ select public.delete_problem('20000000-0000-0000-0000-0000000000ff') $$,
+  'deleting a problem the server never had succeeds, so a refused one can be withdrawn');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select throws_ok($$ update public.problems set setter_id = auth.uid() where id = '20000000-0000-0000-0000-000000000001' $$,
   NULL, NULL, 'not even the owner can change who set a problem');

@@ -132,13 +132,15 @@ create table public.wall_invites (
 
 -- -------------------------------------------------------------------- holds
 
--- Exact doubles: positions must round-trip to the device bit for bit, or a
--- re-synced hold would look moved.
+-- Positions must round-trip to the device bit for bit, or a re-synced hold
+-- would look moved. numeric keeps the exact decimal the device sent; double
+-- precision would come back rounded to 15 digits, since Supabase's Postgres
+-- prints floats with extra_float_digits = 0.
 create table public.holds (
   wall_id uuid not null references public.walls(id) on delete cascade,
   id int not null,
-  x double precision not null check (x between 0 and 1),
-  y double precision not null check (y between 0 and 1),
+  x numeric not null check (x between 0 and 1),
+  y numeric not null check (y between 0 and 1),
   led int,
   source text not null check (source in ('detected', 'manual')),
   primary key (wall_id, id)
@@ -423,7 +425,7 @@ declare
   v int;
 begin
   insert into public.holds (wall_id, id, x, y, led, source)
-  select p_wall, (h->>'id')::int, (h->>'x')::double precision, (h->>'y')::double precision,
+  select p_wall, (h->>'id')::int, (h->>'x')::numeric, (h->>'y')::numeric,
          (h->>'led')::int, h->>'source'
   from jsonb_array_elements(p_holds) h
   on conflict (wall_id, id) do update
@@ -487,13 +489,15 @@ begin
 end $$;
 
 -- Takes a problem down. It stays as a tombstone so devices learn it has
--- gone; its holds are released at once.
+-- gone; its holds are released at once. Deleting a problem that is already
+-- gone, or never arrived, succeeds: a device may delete one the server
+-- refused, and its delete must not be refused too.
 create function public.delete_problem(p_id uuid) returns void
 language plpgsql set search_path = '' as $$
 begin
   update public.problems set deleted_at = now() where id = p_id and deleted_at is null;
-  if not found and not exists (select 1 from public.problems where id = p_id) then
-    raise exception 'no such problem, or not yours to delete';
+  if not found and exists (select 1 from public.problems where id = p_id and deleted_at is null) then
+    raise exception 'not yours to delete' using errcode = '42501';
   end if;
   delete from public.problem_holds where problem_id = p_id;
 end $$;

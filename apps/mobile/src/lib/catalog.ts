@@ -11,6 +11,8 @@ export interface ProblemRow {
   grade: number;
   angle: number;
   createdAt: number;
+  /** Who set it, where known. */
+  setterId?: string | null;
 }
 
 export interface ProblemSummary extends ProblemRow {
@@ -27,6 +29,8 @@ export function summarise(
   problems: readonly ProblemRow[],
   holds: readonly { problemId: string; holdId: number }[],
   ticks: readonly Tick[],
+  /** Whose ticks make a problem "ticked": mine, plus any logged before signing in. */
+  me: string | null = null,
 ): ProblemSummary[] {
   const holdsOf = new Map<string, number[]>();
   for (const h of holds) {
@@ -43,15 +47,17 @@ export function summarise(
   }
 
   return problems.map((p) => {
-    const mine = ticksOf.get(p.id) ?? [];
+    /* Grade and stars come from everyone's ascents; ticked and flashed are mine. */
+    const all = ticksOf.get(p.id) ?? [];
+    const mine = all.filter((t) => t.userId === null || t.userId === me);
     /* A flash is a first ascent in one go; a one-go repeat is just a repeat. */
     const first = mine.reduce<Tick | null>((a, t) => (!a || t.climbedAt < a.climbedAt ? t : a), null);
     return {
       ...p,
       holdIds: holdsOf.get(p.id) ?? [],
-      consensus: gradeAt(p, mine, p.angle) ?? p.grade,
-      stars: averageStars(mine),
-      ascents: mine.length,
+      consensus: gradeAt(p, all, p.angle) ?? p.grade,
+      stars: averageStars(all),
+      ascents: all.length,
       ticked: mine.length > 0,
       flashed: first !== null && isFlash(first),
     };

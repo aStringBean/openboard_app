@@ -38,6 +38,8 @@ export interface Problem {
   /** The wall angle the problem was set, and graded, at. */
   angle: number;
   holds: ProblemHold[];
+  /** Who set it; null for a problem set on this phone before signing in. */
+  setterId: string | null;
   createdAt: number;
   updatedAt: number;
 }

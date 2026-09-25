@@ -7,6 +7,7 @@ import { AnglePicker, GradePicker, StarsInput } from "../components/Pickers";
 import { getProblem, saveTick, ticksFor } from "../lib/db/repo";
 import { newId, type Problem } from "../lib/problem";
 import { gradeAt, validateTick, type Tick } from "../lib/tick";
+import { currentUserId } from "../lib/cloud";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -54,6 +55,7 @@ export function TickScreen() {
       grade,
       stars,
       comment,
+      userId: currentUserId(),
     };
 
     const issues = validateTick(tick);

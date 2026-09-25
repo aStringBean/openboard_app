@@ -20,6 +20,7 @@ const tick = (problemId: string, over: Partial<Tick> = {}): Tick => ({
   climbedAt: 1000,
   angle: 40,
   attempts: 3,
+  userId: null,
   grade: null,
   stars: null,
   comment: "",
@@ -27,6 +28,14 @@ const tick = (problemId: string, over: Partial<Tick> = {}): Tick => ({
 });
 
 describe("summarise", () => {
+  it("counts everyone's ascents, but only mine as ticked", () => {
+    const theirs = [tick("a", { userId: "them", climbedAt: 1, attempts: 1 })];
+    expect(summarise([row("a")], [], theirs, "me")[0]).toMatchObject({ ascents: 1, ticked: false, flashed: false });
+
+    const both = [...theirs, tick("a", { userId: "me", climbedAt: 2, attempts: 1 })];
+    expect(summarise([row("a")], [], both, "me")[0]).toMatchObject({ ascents: 2, ticked: true, flashed: true });
+  });
+
   it("gathers each problem's holds", () => {
     const [a, b] = summarise(
       [row("a"), row("b")],

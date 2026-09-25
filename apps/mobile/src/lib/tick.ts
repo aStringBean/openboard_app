@@ -17,6 +17,8 @@ export interface Tick {
   /** Quality, 1 to MAX_STARS, if given. */
   stars: number | null;
   comment: string;
+  /** Who climbed it; null for an ascent logged on this phone before signing in. */
+  userId: string | null;
 }
 
 export const MAX_STARS = 3;

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { angleRange, withAngles, type Wall } from "./wall";
+import { angleRange, canEditProblem, canEditWall, canSet, withAngles, type Wall } from "./wall";
 
-const wall: Wall = { id: "w", name: "Garage", angleMode: "fixed", angles: [40], currentAngle: 40 };
+const wall: Wall = { id: "w", name: "Garage", angleMode: "fixed", angles: [40], currentAngle: 40,
+  cloud: false,
+  role: null,
+  setterPolicy: "everyone",
+};
 
 describe("angleRange", () => {
   it("steps from min to max inclusive", () => {
@@ -39,5 +43,39 @@ describe("withAngles", () => {
 
   it("ignores a setup with no usable angle", () => {
     expect(withAngles(wall, "adjustable", [-1, 200])).toBe(wall);
+  });
+});
+
+describe("permissions", () => {
+  const shared = (role: Wall["role"], setterPolicy: Wall["setterPolicy"] = "everyone"): Wall => ({
+    ...wall,
+    cloud: true,
+    role,
+    setterPolicy,
+  });
+
+  it("let you do anything on a wall that is only on this phone", () => {
+    expect(canEditWall(wall)).toBe(true);
+    expect(canSet(wall)).toBe(true);
+    expect(canEditProblem(wall, "someone", null)).toBe(true);
+  });
+
+  it("leave the wall itself to its owner", () => {
+    expect(canEditWall(shared("owner"))).toBe(true);
+    expect(canEditWall(shared("setter"))).toBe(false);
+    expect(canEditWall(shared("climber"))).toBe(false);
+  });
+
+  it("let climbers set only when everyone may", () => {
+    expect(canSet(shared("climber", "everyone"))).toBe(true);
+    expect(canSet(shared("climber", "chosen"))).toBe(false);
+    expect(canSet(shared("setter", "chosen"))).toBe(true);
+    expect(canSet(shared("owner", "chosen"))).toBe(true);
+  });
+
+  it("let you edit your own problems, and the owner anyone's", () => {
+    expect(canEditProblem(shared("climber"), "me", "me")).toBe(true);
+    expect(canEditProblem(shared("setter"), "them", "me")).toBe(false);
+    expect(canEditProblem(shared("owner"), "them", "me")).toBe(true);
   });
 });

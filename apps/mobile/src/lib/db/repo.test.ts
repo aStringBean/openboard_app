@@ -12,6 +12,7 @@ import {
 import type { Problem } from "../problem";
 import type { Tick } from "../tick";
 import {
+  clearChange,
   createList,
   createWall,
   deleteList,
@@ -27,12 +28,17 @@ import {
   getProblem,
   getSetting,
   getWall,
+  deleteWallLocally,
+  listComments,
   listProblems,
   loadCalibration,
+  listWalls,
   logbook,
+  pendingChanges,
   problemsUsingHold,
   saveCalibration,
   saveProblem,
+  saveComment,
   saveTick,
   setSetting,
   ticksFor,
@@ -62,6 +68,7 @@ const problem = (over: Partial<Problem> = {}): Problem => ({
   wallId: WALL,
   name: "Crimp city",
   grade: 5,
+  setterId: null,
   angle: 40,
   holds: [
     { holdId: 0, role: "start" },
@@ -100,6 +107,9 @@ describe("walls", () => {
       angleMode: "fixed",
       angles: [40],
       currentAngle: 40,
+      cloud: false,
+      role: null,
+      setterPolicy: "everyone",
     });
   });
 
@@ -239,6 +249,7 @@ const tick = (over: Partial<Tick> = {}): Tick => ({
   id: "t1",
   problemId: "p1",
   climbedAt: 5000,
+  userId: null,
   angle: 40,
   attempts: 2,
   grade: 7,
@@ -301,11 +312,24 @@ describe("ticks", () => {
 });
 
 describe("upgrading an existing install", () => {
-  it("adds ticks to a version 1 database without touching its data", async () => {
+  it("brings a version 1 database up to date without touching its data", async () => {
     const old = memoryDb();
     await migrate(old, 1);
     await createWall(old, WALL, "Garage", seeded());
-    await saveProblem(old, problem());
+    /* Written as version 1 code wrote it: the repository now expects newer columns. */
+    await old.run("INSERT INTO problem (id, wall_id, name, grade, angle, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+      "p1",
+      WALL,
+      "Crimp city",
+      5,
+      40,
+      1000,
+      1000,
+    ]);
+    await old.run(
+      "INSERT INTO problem_hold (problem_id, wall_id, hold_id, role) VALUES ('p1', ?, 0, 'start'), ('p1', ?, 1, 'finish')",
+      [WALL, WALL],
+    );
     const before = await loadCalibration(old, WALL);
 
     await migrate(old);
@@ -328,8 +352,14 @@ describe("lists", () => {
   it("keep their problems in order", async () => {
     await setListItems(db, "L", ["p3", "p1", "p2"]);
 
-    expect(await getList(db, "L")).toEqual({ id: "L", name: "Warm-up", problemIds: ["p3", "p1", "p2"] });
-    expect(await listLists(db, WALL)).toEqual([{ id: "L", name: "Warm-up", count: 3 }]);
+    expect(await getList(db, "L")).toEqual({
+      id: "L",
+      name: "Warm-up",
+      problemIds: ["p3", "p1", "p2"],
+      ownerId: null,
+      shared: false,
+    });
+    expect(await listLists(db, WALL)).toEqual([{ id: "L", name: "Warm-up", count: 3, ownerId: null, shared: false }]);
   });
 
   it("hold a problem at most once", async () => {
@@ -376,5 +406,119 @@ describe("lists", () => {
 
   it("refuse a problem that does not exist", async () => {
     await expect(setListItems(db, "L", ["nope"])).rejects.toThrow(/FOREIGN KEY/);
+  });
+});
+
+describe("changes for the server", () => {
+  const share = () => db.run("UPDATE wall SET cloud = 1, my_role = 'owner' WHERE id = ?", [WALL]);
+  const queued = async () => (await pendingChanges(db, WALL)).map((e) => `${e.kind}:${e.op}:${e.id}`);
+
+  beforeEach(async () => {
+    await createWall(db, WALL, "Garage", seeded());
+  });
+
+  it("are not queued for a wall that stays on this phone", async () => {
+    await saveProblem(db, problem());
+    await saveTick(db, tick());
+
+    expect(await queued()).toEqual([]);
+  });
+
+  it("are queued, in order, once the wall is shared", async () => {
+    await share();
+    await saveProblem(db, problem());
+    await saveTick(db, tick());
+    await saveComment(db, { id: "c1", problemId: "p1", userId: null, body: "Nice", createdAt: 1 });
+    await createList(db, "L", WALL, "Circuit");
+
+    expect(await queued()).toEqual(["problem:upsert:p1", "tick:upsert:t1", "comment:upsert:c1", "list:upsert:L"]);
+  });
+
+  it("keep one entry per row, the latest operation winning", async () => {
+    await share();
+    await saveProblem(db, problem());
+    await saveProblem(db, problem({ name: "Renamed" }));
+    await deleteProblem(db, "p1");
+
+    expect(await queued()).toEqual(["problem:delete:p1"]);
+  });
+
+  it("are not queued when they came from the server", async () => {
+    await share();
+    await saveProblem(db, problem(), { fromServer: true });
+    await deleteProblem(db, "p1", { fromServer: true });
+
+    expect(await queued()).toEqual([]);
+  });
+
+  it("survive an upload that finishes after the row changed again", async () => {
+    await share();
+    await saveProblem(db, problem());
+    const [sent] = await pendingChanges(db, WALL);
+    await saveProblem(db, problem({ name: "Edited while uploading" }));
+
+    await clearChange(db, sent!);
+
+    expect(await queued()).toEqual(["problem:upsert:p1"]);
+  });
+
+  it("queue holds and photo only when they really change", async () => {
+    await share();
+    const c = await loadCalibration(db, WALL);
+
+    await saveCalibration(db, WALL, { ...c, taps: [...c.taps, 100] });
+    expect(await queued()).toEqual([]);
+
+    await saveCalibration(db, WALL, { ...c, holds: c.holds.map((h) => (h.id === 2 ? { ...h, x: 0.8 } : h)) });
+    await saveCalibration(db, WALL, { ...c, photoUri: "file:///new.jpg" });
+    expect(await queued()).toEqual([`holds:upsert:${WALL}`, `photo:upsert:${WALL}`]);
+  });
+});
+
+describe("several people on one wall", () => {
+  beforeEach(async () => {
+    await createWall(db, WALL, "Garage", seeded());
+    await saveProblem(db, problem());
+  });
+
+  it("keeps my logbook to my ascents, and those from before signing in", async () => {
+    await saveTick(db, tick({ id: "old", userId: null }));
+    await saveTick(db, tick({ id: "mine", userId: "me" }));
+    await saveTick(db, tick({ id: "theirs", userId: "them" }));
+
+    expect((await logbook(db, WALL, "me")).map((e) => e.id).sort()).toEqual(["mine", "old"]);
+  });
+
+  it("shows my lists and shared ones, not others' private lists", async () => {
+    await createList(db, "mine", WALL, "Mine", "me");
+    await createList(db, "private", WALL, "Theirs", "them");
+    await createList(db, "shared", WALL, "Circuit", "them", { shared: true });
+
+    expect((await listLists(db, WALL, "me")).map((l) => l.id).sort()).toEqual(["mine", "shared"]);
+  });
+
+  it("names comment authors from the wall's members", async () => {
+    await db.run("INSERT INTO member (wall_id, user_id, role, name) VALUES (?, 'them', 'climber', 'Cleo')", [WALL]);
+    await saveComment(db, { id: "c1", problemId: "p1", userId: "them", body: "Crux is hard", createdAt: 2 });
+    await saveComment(db, { id: "c2", problemId: "p1", userId: "gone", body: "Agreed", createdAt: 3 });
+
+    expect(await listComments(db, "p1")).toMatchObject([
+      { body: "Crux is hard", author: "Cleo" },
+      { body: "Agreed", author: "" },
+    ]);
+  });
+
+  it("forgets a wall entirely when leaving it", async () => {
+    await createWall(db, "other", "Board");
+    await saveTick(db, tick());
+    await createList(db, "L", WALL, "Circuit");
+    await saveComment(db, { id: "c1", problemId: "p1", userId: null, body: "x", createdAt: 1 });
+
+    await deleteWallLocally(db, WALL);
+
+    expect((await listWalls(db)).map((w) => w.id)).toEqual(["other"]);
+    for (const t of ["problem", "problem_hold", "tick", "list", "comment", "hold"]) {
+      expect(await db.all(`SELECT * FROM ${t}`), t).toEqual([]);
+    }
   });
 });

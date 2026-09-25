@@ -93,6 +93,55 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX list_item_order ON list_item (list_id, position);
   `,
+
+  /* 4: sharing. Who made each row; which walls are shared and my role on
+   * them; comments; a cache of each shared wall's members; and the outbox of
+   * changes waiting to reach the server. */
+  `
+  ALTER TABLE wall ADD COLUMN cloud INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE wall ADD COLUMN my_role TEXT;
+  ALTER TABLE wall ADD COLUMN setter_policy TEXT NOT NULL DEFAULT 'everyone';
+  ALTER TABLE wall ADD COLUMN photo_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE wall ADD COLUMN holds_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE wall ADD COLUMN sync_cursor TEXT;
+  ALTER TABLE wall ADD COLUMN synced_at INTEGER;
+
+  ALTER TABLE problem ADD COLUMN setter_id TEXT;
+  ALTER TABLE tick ADD COLUMN user_id TEXT;
+  ALTER TABLE list ADD COLUMN owner_id TEXT;
+  ALTER TABLE list ADD COLUMN shared INTEGER NOT NULL DEFAULT 0;
+
+  CREATE TABLE comment (
+    id TEXT PRIMARY KEY,
+    problem_id TEXT NOT NULL REFERENCES problem(id) ON DELETE CASCADE,
+    user_id TEXT,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX comment_by_problem ON comment (problem_id, created_at);
+
+  CREATE TABLE member (
+    wall_id TEXT NOT NULL REFERENCES wall(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'setter', 'climber')),
+    name TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (wall_id, user_id)
+  );
+
+  -- One row per change waiting to reach the server. seq changes on every
+  -- re-enqueue, so a push only clears the entry if nothing changed while it
+  -- was in flight.
+  CREATE TABLE outbox (
+    kind TEXT NOT NULL CHECK (kind IN ('wall', 'holds', 'photo', 'problem', 'tick', 'list', 'comment')),
+    id TEXT NOT NULL,
+    wall_id TEXT NOT NULL,
+    op TEXT NOT NULL CHECK (op IN ('upsert', 'delete')),
+    seq INTEGER NOT NULL,
+    error TEXT,
+    PRIMARY KEY (kind, id)
+  );
+  CREATE INDEX outbox_by_wall ON outbox (wall_id, seq);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
