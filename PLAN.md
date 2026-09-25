@@ -364,8 +364,92 @@ The test calibration says 500 LEDs; the controller drives 250, and silently
 drops anything past the end. The firmware is write-only, so only the native
 mode in phase 5 (which reports chain length back) can close this.
 
-**4 — Multi-user.** Supabase, auth, wall membership via QR and invite link,
-sync, ratings, comments, consensus grades.
+**4 — Multi-user. DONE, against a local Supabase.** Auth, walls shared by QR
+code and invite link, members and roles, sync, comments, consensus grades
+from everyone's ascents.
+
+*Decided (2026-09-24):*
+
+- **Local first.** Supabase runs in Docker on the laptop (`supabase start`;
+  CLI pinned in `mise.toml`); the phone reaches it over USB with
+  `adb reverse tcp:54321 tcp:54321`. A hosted project needs only
+  `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` at build time,
+  and `supabase db push`.
+- **Sign-in by emailed 6-digit code.** No passwords, no links to open.
+- **Setters, per wall:** "every member" (anyone who joins can set) or
+  "chosen setters" (the owner picks). The owner can switch at any time; a
+  member keeps editing problems they set before a switch.
+- **Lists are personal, and can be shared with the wall.** Others see a
+  shared list read-only.
+- **Angles:** the owner sets which angles an adjustable wall offers; which
+  one it is at is each member's own, kept on their phone.
+
+*TODO — Google and Apple sign-in need the user's own credentials.* The
+Account screen has room for them above the email form, and Supabase
+supports both; what is missing is:
+
+- **Google:** an OAuth client in a Google Cloud project (Android client with
+  the app's SHA-1, plus a web client for Supabase), then
+  `[auth.external.google]` in `supabase/config.toml` and the
+  `@react-native-google-signin/google-signin` native flow.
+- **Apple:** an Apple Developer account ($99/yr) and a Mac for iOS builds;
+  a Services ID and key for `[auth.external.apple]`, and
+  `expo-apple-authentication`. Apple requires it on iOS once any other
+  social sign-in is offered.
+
+*Built:*
+
+- **Server** (`supabase/migrations/…_multi_user.sql`): the wall is the
+  tenant; every table is readable only by the wall's members through
+  row-level security. The owner changes the wall, its holds and photo,
+  invites and roles; setters per the policy; everyone edits only their own
+  problems, ticks, comments and lists; the owner can take down problems and
+  comments. Atomic functions for joining by code, replacing the hold set,
+  saving a problem with its holds (enforcing 1–2 start and finish holds),
+  and saving a list with its items. 52 pgTAP tests run as real users
+  (`supabase test db`).
+- **Sync** (`apps/mobile/src/lib/sync.ts`): the phone's SQLite stays the
+  only thing screens read. Changes to a shared wall go into an outbox (one
+  entry per row, sequence-numbered so an upload finishing late cannot clear
+  a newer edit). A sync pushes the outbox, then pulls others' changes since
+  a per-table cursor of server timestamps, never overwriting a row still
+  waiting to go up. The photo and hold set are versioned and fetched whole;
+  deletions travel as tombstones. What the server refuses stays queued, with
+  its reason shown on the Sharing screen. The app syncs on opening, on
+  returning to the front, every minute, and 1.5 s after any change. The
+  engine has no React Native imports: `npm run test:sync` runs two simulated
+  phones against the local server.
+- **App:** several walls per phone (switch from the list's title); Sharing
+  screen with invite code, QR and share sheet, setter policy, members and
+  roles, sync status and leaving; join from a link, QR or typed code;
+  problems show their setter, everyone's ascents and comments.
+
+*Verified on the Pixel (2026-09-24)* with a second user, Cleo, simulated
+from the laptop through the same sync code: the Pixel shared its wall (503
+holds, positions bit-exact, 1.1 MB photo); Cleo joined by the code in the QR
+and set, ticked and commented on a problem that then showed on the phone
+under her name; the phone's reply and ascent reached her. The other way
+round, the phone opened Cleo's `openboard://join/…` link, joined, fetched her
+photo and problem, lost "New problem" when she switched to chosen setters,
+and left cleanly. Test data removed afterwards; the phone's wall restored to
+local-only.
+
+*Bugs the device found:* React Native's Blob has no `arrayBuffer`, so
+members could not download photos (Node has one, which hid it in tests);
+a sync requested mid-sync re-ran the old wall's; and no wall with a problem
+could be deleted, nor its owner's account, because the hold-in-use foreign
+key fired before the cascade reached the problems' holds.
+
+*Known gaps:*
+
+- A problem that breaks the start/finish limit (like the phone's own
+  "Test a", 8 finish holds, set before the limit existed) is refused by the
+  server until edited; its ascents wait with it.
+- Deleting a whole wall, and transferring ownership, are server-side only;
+  there is no screen for either yet.
+- One account per phone: signing in as someone else on a phone holding
+  another account's shared walls is not handled.
+- Deploying: a hosted Supabase project, and building with its URL and key.
 
 **5 — Firmware native mode.** Add an `OPENBOARD` board type with full 24-bit
 RGB, config read/write, and notifications back to the app (board mode, chain
