@@ -24,11 +24,8 @@ export async function keepPhoto(wallId: string, uri: string): Promise<string> {
 
 export const photoStore: PhotoStore = {
   read: (uri) => new File(uri).bytes(),
-  async save(wallId, name, bytes) {
-    const file = new File(wallDir(wallId), name);
-    if (file.exists) file.delete();
-    file.create();
-    file.write(bytes);
+  async download(url, wallId, name) {
+    const file = await File.downloadFileAsync(url, new File(wallDir(wallId), name), { idempotent: true });
     return file.uri;
   },
 };

@@ -43,8 +43,11 @@ import type { AngleMode, SetterPolicy, WallRole } from "./wall";
 /** Where photos live on this phone. Expo's file system on a phone, the disk in tests. */
 export interface PhotoStore {
   read(uri: string): Promise<Uint8Array>;
-  /** Keeps a downloaded photo and says where it is. */
-  save(wallId: string, name: string, bytes: Uint8Array): Promise<string>;
+  /**
+   * Downloads a photo to keep, and says where it is. The download is the
+   * store's job: React Native's Blob cannot hand back its bytes.
+   */
+  download(url: string, wallId: string, name: string): Promise<string>;
 }
 
 export interface SyncResult {
@@ -334,6 +337,12 @@ async function sendList(db: Db, sb: SupabaseClient, id: string, me: string) {
   );
 }
 
+/** An ascent or comment can only follow its problem up, once the server has that. */
+async function afterProblem(db: Db, problemId: string) {
+  if (await isPending(db, "problem", problemId)) throw new Error(WAITING_FOR_PROBLEM);
+}
+export const WAITING_FOR_PROBLEM = "waiting for its problem to be accepted";
+
 async function sendTick(db: Db, sb: SupabaseClient, id: string, wallId: string) {
   const t = await db.get<{
     problem_id: string;
@@ -346,6 +355,7 @@ async function sendTick(db: Db, sb: SupabaseClient, id: string, wallId: string) 
     user_id: string | null;
   }>("SELECT * FROM tick WHERE id = ?", [id]);
   if (!t) return;
+  await afterProblem(db, t.problem_id);
   ok(
     await sb.from("ticks").upsert({
       id,
@@ -369,6 +379,7 @@ async function sendComment(db: Db, sb: SupabaseClient, id: string, wallId: strin
     [id],
   );
   if (!c) return;
+  await afterProblem(db, c.problem_id);
   ok(
     await sb.from("comments").upsert({
       id,
@@ -484,18 +495,22 @@ async function pullMembers(db: Db, sb: SupabaseClient, wallId: string, me: strin
 }
 
 async function pullPhoto(db: Db, sb: SupabaseClient, photos: PhotoStore, wallId: string, w: ServerWall) {
-  const res = await sb.storage.from("wall-photos").download(w.photo_path!);
-  if (res.error) {
+  const signed = await sb.storage.from("wall-photos").createSignedUrl(w.photo_path!, 300);
+  if (signed.error) {
     /* Refused or gone: keep the photo we have and try again next time. */
     try {
-      storageFailed(res.error);
+      storageFailed(signed.error);
     } catch (err) {
       if (err instanceof Offline) throw err;
       return;
     }
   }
-  const bytes = new Uint8Array(await res.data.arrayBuffer());
-  const uri = await photos.save(wallId, `${w.photo_version}.${extOf(w.photo_path!)}`, bytes);
+  let uri: string;
+  try {
+    uri = await photos.download(signed.data!.signedUrl, wallId, `${w.photo_version}.${extOf(w.photo_path!)}`);
+  } catch (err) {
+    throw new Offline(err instanceof Error ? err.message : String(err));
+  }
   await db.run("UPDATE wall SET photo_uri = ?, photo_aspect = ?, photo_version = ? WHERE id = ?", [
     uri,
     w.photo_aspect,

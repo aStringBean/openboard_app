@@ -169,9 +169,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ----------------------------------------------------------------- sync
 
-  /* One sync at a time; a request during one runs another straight after. */
+  /* One sync at a time; a request during one runs another straight after —
+   * through the latest runSync, since the wall may have changed meanwhile. */
   const running = useRef(false);
   const again = useRef(false);
+  const latest = useRef<() => Promise<void>>(async () => {});
 
   const runSync = useCallback(async () => {
     if (!db || !wallId || !me || !shared) return;
@@ -183,32 +185,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSync((s) => ({ ...(s.wallId === wallId ? s : IDLE), wallId, running: true }));
 
     try {
-      do {
-        again.current = false;
-        let next: Partial<SyncStatus>;
-        try {
-          const r = await syncWall(db, cloud, photoStore, wallId, me);
-          next = { offline: false, error: null, lastAt: Date.now(), removed: r.removed };
-          if (r.pulled > 0 || r.pushed > 0) setRevision((n) => n + 1);
-        } catch (err) {
-          next = err instanceof Offline ? { offline: true } : { error: err instanceof Error ? err.message : String(err) };
-        }
-        const queue = await pendingChanges(db, wallId);
-        setSync((s) => ({
-          ...s,
-          ...next,
-          waiting: queue.length,
-          refused: queue.filter((e) => e.error !== null).length,
-        }));
-        /* Name, angles, policy or role may have changed. */
-        const fresh = await getWall(db, wallId).catch(() => undefined);
-        if (fresh) setReady((r) => (r ? { ...r, walls: r.walls.map((w) => (w.id === fresh.id ? fresh : w)) } : r));
-      } while (again.current);
+      let next: Partial<SyncStatus>;
+      try {
+        const r = await syncWall(db, cloud, photoStore, wallId, me);
+        next = { offline: false, error: null, lastAt: Date.now(), removed: r.removed };
+        if (r.pulled > 0 || r.pushed > 0) setRevision((n) => n + 1);
+      } catch (err) {
+        next = err instanceof Offline ? { offline: true } : { error: err instanceof Error ? err.message : String(err) };
+      }
+      const queue = await pendingChanges(db, wallId);
+      setSync((s) => ({
+        ...s,
+        ...next,
+        waiting: queue.length,
+        refused: queue.filter((e) => e.error !== null).length,
+      }));
+      /* Name, angles, policy or role may have changed. */
+      const fresh = await getWall(db, wallId).catch(() => undefined);
+      if (fresh) setReady((r) => (r ? { ...r, walls: r.walls.map((w) => (w.id === fresh.id ? fresh : w)) } : r));
     } finally {
       running.current = false;
       setSync((s) => ({ ...s, running: false }));
+      if (again.current) {
+        again.current = false;
+        void latest.current();
+      }
     }
   }, [db, wallId, me, shared]);
+
+  useEffect(() => {
+    latest.current = runSync;
+  }, [runSync]);
 
   /* Sync when the wall or the user changes, and poll while in front. */
   useEffect(() => {

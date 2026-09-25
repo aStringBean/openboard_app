@@ -86,9 +86,11 @@ async function phone(label: string, name: string): Promise<Phone> {
   const dir = mkdtempSync(join(tmpdir(), `openboard-${label}-`));
   const photos: PhotoStore = {
     read: async (uri) => new Uint8Array(readFileSync(uri.replace(/^file:\/\//, ""))),
-    save: async (wallId, fileName, bytes) => {
+    download: async (url, wallId, fileName) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`download failed: ${res.status}`);
       const path = join(dir, `${wallId}-${fileName}`);
-      writeFileSync(path, bytes);
+      writeFileSync(path, new Uint8Array(await res.arrayBuffer()));
       return `file://${path}`;
     },
   };
@@ -146,7 +148,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  /* Deleting the users takes their walls and everything on them too. */
+  /* Deleting the users takes their walls and everything on them too — but
+   * not the photos in storage. */
+  if (wallId) {
+    const listed = await admin.storage.from("wall-photos").list(wallId);
+    const paths = (listed.data ?? []).map((f) => `${wallId}/${f.name}`);
+    if (paths.length) await admin.storage.from("wall-photos").remove(paths);
+  }
   for (const id of users) await admin.auth.admin.deleteUser(id);
 });
 

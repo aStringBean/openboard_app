@@ -8,12 +8,38 @@ import { Segmented } from "../components/Pickers";
 import { useFocusReload } from "../components/useFocusReload";
 import { cloud, getDisplayName } from "../lib/cloud";
 import { listMembers, type Member, type OutboxEntry } from "../lib/db/repo";
+import type { Db } from "../lib/db/types";
 import { createInvite, inviteLink, outboxState, publishWall, removeMember, setMemberRole } from "../lib/sync";
 import type { SetterPolicy } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
 const ROLE_TEXT = { owner: "Owner", setter: "Setter", climber: "Climber" } as const;
+
+/** What a queued change is about, in words: 'Problem "Crimp city"', 'Ascent of "Crimp city"'. */
+async function describe(db: Db, e: OutboxEntry): Promise<string> {
+  const name = async (sql: string) => (await db.get<{ name: string }>(sql, [e.id]))?.name;
+  const n =
+    e.kind === "problem"
+      ? await name("SELECT name FROM problem WHERE id = ?")
+      : e.kind === "list"
+        ? await name("SELECT name FROM list WHERE id = ?")
+        : e.kind === "tick"
+          ? await name("SELECT p.name FROM tick t JOIN problem p ON p.id = t.problem_id WHERE t.id = ?")
+          : e.kind === "comment"
+            ? await name("SELECT p.name FROM comment c JOIN problem p ON p.id = c.problem_id WHERE c.id = ?")
+            : undefined;
+  const label = {
+    problem: "Problem",
+    list: "List",
+    tick: "Ascent of",
+    comment: "Comment on",
+    wall: "Wall",
+    holds: "Holds",
+    photo: "Photo",
+  }[e.kind];
+  return n === undefined ? label : `${label} "${n}"`;
+}
 
 const ago = (t: number) => {
   const s = Math.round((Date.now() - t) / 1000);
@@ -32,17 +58,7 @@ export function ShareScreen() {
   const reload = useCallback(() => {
     let live = true;
     Promise.all([listMembers(db, wall.id), outboxState(db, wall.id)]).then(async ([m, o]) => {
-      const named = await Promise.all(
-        o.refused.map(async (entry) => {
-          const row =
-            entry.kind === "problem"
-              ? await db.get<{ name: string }>("SELECT name FROM problem WHERE id = ?", [entry.id])
-              : entry.kind === "list"
-                ? await db.get<{ name: string }>("SELECT name FROM list WHERE id = ?", [entry.id])
-                : undefined;
-          return { entry, what: row ? `${entry.kind === "list" ? "List" : "Problem"} "${row.name}"` : entry.kind };
-        }),
-      );
+      const named = await Promise.all(o.refused.map(async (entry) => ({ entry, what: await describe(db, entry) })));
       if (!live) return;
       setMembers(m);
       setRefused(named);
