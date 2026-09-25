@@ -1,0 +1,24 @@
+# Settings pushed to the hosted project, and only these: `supabase config
+# push` sends every property a config declares, and the main
+# supabase/config.toml also declares local-development values (site URL,
+# 1-second email rate limit, pool sizes) that must not reach production.
+#
+#   supabase config diff --workdir hosted     # review first
+#   supabase config push --workdir hosted
+#
+# The schema goes separately, from the repository root: supabase db push.
+
+project_id = "openboard_app"
+
+[auth.email]
+# The app's sign-in form takes a 6-digit code; hosted projects default to 8.
+otp_length = 6
+
+# New and returning users get the same email: the code, not a link.
+[auth.email.template.magic_link]
+subject = "Your OpenBoard sign-in code"
+content_path = "../supabase/templates/sign_in_code.html"
+
+[auth.email.template.confirmation]
+subject = "Your OpenBoard sign-in code"
+content_path = "../supabase/templates/sign_in_code.html"

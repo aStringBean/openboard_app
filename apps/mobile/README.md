@@ -58,9 +58,12 @@ Setting up the project, from the repository root:
 supabase login                               # once, in a browser
 supabase link --project-ref <project-ref>
 supabase db push                             # the migrations
-supabase config diff                         # review, then:
-supabase config push                         # auth settings, sign-in email
+supabase config diff --workdir hosted        # review, then:
+supabase config push --workdir hosted        # 6-digit codes, sign-in email
 ```
+
+`hosted/supabase/config.toml` declares only what production needs; the main
+config also holds local-development values that `config push` would send.
 
 A phone moving from one server to another keeps the walls it owns, as its
 own again, to share on the new server; walls it joined elsewhere go.
