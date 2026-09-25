@@ -38,8 +38,32 @@ supabase start                              # via mise: mise exec -- supabase st
 adb reverse tcp:54321 tcp:54321             # again after every re-plug
 ```
 
-Sign-in codes land in Mailpit at http://127.0.0.1:54324. A hosted project
-needs `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` at build time.
+Sign-in codes land in Mailpit at http://127.0.0.1:54324.
+
+### A hosted server
+
+Development builds talk to the local Supabase; release builds read
+`.env.production.local` (gitignored — Expo loads it when bundling for
+release), so the two never mix:
+
+```shell
+# apps/mobile/.env.production.local
+EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_KEY=sb_publishable_…     # the project's publishable key
+```
+
+Setting up the project, from the repository root:
+
+```shell
+supabase login                               # once, in a browser
+supabase link --project-ref <project-ref>
+supabase db push                             # the migrations
+supabase config diff                         # review, then:
+supabase config push                         # auth settings, sign-in email
+```
+
+A phone moving from one server to another keeps the walls it owns, as its
+own again, to share on the new server; walls it joined elsewhere go.
 
 ## Layout
 

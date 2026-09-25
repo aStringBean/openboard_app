@@ -440,16 +440,22 @@ a sync requested mid-sync re-ran the old wall's; and no wall with a problem
 could be deleted, nor its owner's account, because the hold-in-use foreign
 key fired before the cascade reached the problems' holds.
 
+*Closed since (2026-09-25):* the owner can hand a wall to another member
+(`transfer_wall`) or stop sharing it (off the server and members' phones,
+kept on theirs as a wall of its own); walls on one phone alone can be
+deleted; signing in fetches the account's shared walls, so a new phone gets
+them back; a different account signing in takes the previous one's shared
+walls off the phone before any sync, and a build pointed at a different
+server keeps the walls the phone owns (`lib/account.ts`).
+
 *Known gaps:*
 
-- A problem that breaks the start/finish limit (like the phone's own
-  "Test a", 8 finish holds, set before the limit existed) is refused by the
-  server until edited; its ascents wait with it.
-- Deleting a whole wall, and transferring ownership, are server-side only;
-  there is no screen for either yet.
-- One account per phone: signing in as someone else on a phone holding
-  another account's shared walls is not handled.
-- Deploying: a hosted Supabase project, and building with its URL and key.
+- A problem that breaks the start/finish limit, set before the limit
+  existed, is refused by the server until edited; its ascents wait with it.
+- Hosted Supabase (in progress): the project is the user's to create. Its
+  default email sender only reaches the project's own team, a few emails an
+  hour — fine for testing, but inviting friends needs custom SMTP (Resend,
+  Postmark, …) set in the dashboard.
 
 **5 — Firmware native mode.** Add an `OPENBOARD` board type with full 24-bit
 RGB, config read/write, and notifications back to the app (board mode, chain
