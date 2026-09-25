@@ -19,6 +19,7 @@ import * as Sharing from "expo-sharing";
 
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas, type WallCanvasHandle } from "../components/WallCanvas";
+import { CommitTextInput } from "../components/CommitTextInput";
 import * as board from "../lib/board";
 import {
   addHold,
@@ -549,12 +550,13 @@ export function CalibrationScreen() {
 
           <View style={styles.row}>
             <Text style={styles.dim}>Chain length</Text>
-            <TextInput
+            <CommitTextInput
               style={styles.input}
               keyboardType="number-pad"
-              defaultValue={String(cal.chainLength)}
-              onEndEditing={(e) => {
-                const n = Number(e.nativeEvent.text);
+              initial={String(cal.chainLength)}
+              commitWhile="done"
+              onCommit={(text) => {
+                const n = Number(text);
                 if (Number.isInteger(n) && n > 0 && n <= 1000) {
                   commit({ ...calRef.current, chainLength: n });
                 }

@@ -4,6 +4,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-rou
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ProblemRow } from "../components/ProblemRow";
+import { CommitTextInput } from "../components/CommitTextInput";
 import type { ProblemSummary } from "../lib/catalog";
 import { deleteList, getList, listProblems, renameList, setListItems } from "../lib/db/repo";
 import { move } from "../lib/order";
@@ -59,12 +60,12 @@ export function ListDetailScreen() {
       <Stack.Screen options={{ title: name || "List" }} />
 
       <View style={styles.head}>
-        <TextInput
+        <CommitTextInput
           style={styles.input}
-          value={name}
+          initial={name}
           onChangeText={setName}
-          onEndEditing={(e) => {
-            const n = e.nativeEvent.text.trim();
+          onCommit={(text) => {
+            const n = text.trim();
             if (n) void renameList(db, id, n);
           }}
           maxLength={40}

@@ -4,6 +4,8 @@ import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnglePicker, Segmented } from "../components/Pickers";
+import { useSession } from "../components/useSession";
+import { CommitTextInput } from "../components/CommitTextInput";
 import { gradeLabel, type GradeScale } from "../lib/grades";
 import { angleRange, DEFAULT_ADJUSTABLE, DEFAULT_FIXED_ANGLE, withAngles, type AngleMode } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
@@ -14,12 +16,13 @@ function NumberField({ label, value, onCommit }: { label: string; value: number;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
+      <CommitTextInput
         style={styles.input}
         keyboardType="number-pad"
-        defaultValue={String(value)}
-        onEndEditing={(e) => {
-          const n = Number(e.nativeEvent.text);
+        initial={String(value)}
+        commitWhile="done"
+        onCommit={(text) => {
+          const n = Number(text);
           if (Number.isInteger(n)) onCommit(n);
         }}
       />
@@ -53,6 +56,9 @@ export function SettingsScreen() {
       <Stack.Screen options={{ title: "Settings" }} />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <Text style={styles.section}>Account</Text>
+        <AccountLink />
+
         <Text style={styles.section}>Wall</Text>
 
         <Pressable style={styles.link} onPress={() => router.push("/setup")}>
@@ -62,12 +68,12 @@ export function SettingsScreen() {
 
         <View style={styles.field}>
           <Text style={styles.label}>Name</Text>
-          <TextInput
+          <CommitTextInput
             style={styles.input}
-            defaultValue={wall.name}
+            initial={wall.name}
             maxLength={40}
-            onEndEditing={(e) => {
-              const name = e.nativeEvent.text.trim();
+            onCommit={(text) => {
+              const name = text.trim();
               if (name) void saveWall({ ...wall, name });
             }}
           />
@@ -150,3 +156,14 @@ const styles = StyleSheet.create({
   linkTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
   dim: { color: theme.dim, fontSize: 13 },
 });
+
+function AccountLink() {
+  const router = useRouter();
+  const { session } = useSession();
+  return (
+    <Pressable style={styles.link} onPress={() => router.push("/account")}>
+      <Text style={styles.linkTitle}>{session ? session.user.email : "Sign in"}</Text>
+      <Text style={styles.dim}>{session ? "Your name, sign out" : "To share walls and sync between phones"}</Text>
+    </Pressable>
+  );
+}
