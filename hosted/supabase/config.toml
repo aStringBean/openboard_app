@@ -14,11 +14,13 @@ project_id = "openboard_app"
 # The app's sign-in form takes a 6-digit code; hosted projects default to 8.
 otp_length = 6
 
-# New and returning users get the same email: the code, not a link.
+# New and returning users get the same email: the code, not a link. The CLI
+# only reads templates inside this folder, so this is a copy of
+# supabase/templates/sign_in_code.html — change both together.
 [auth.email.template.magic_link]
 subject = "Your OpenBoard sign-in code"
-content_path = "../supabase/templates/sign_in_code.html"
+content_path = "./supabase/templates/sign_in_code.html"
 
 [auth.email.template.confirmation]
 subject = "Your OpenBoard sign-in code"
-content_path = "../supabase/templates/sign_in_code.html"
+content_path = "./supabase/templates/sign_in_code.html"
