@@ -488,6 +488,24 @@ set from the firmware console only, never over Bluetooth. The app picks
 the protocol by the advertised name: `OpenBoard` gets API 1 (details from
 `INFO`), an Aurora-family name gets Aurora API 3.
 
+*Built and verified (2026-09-27).* Firmware 1.1.0 (`open_board_leds`,
+branch `dev`): the OPENBOARD board type, OpenBoard API 1, brightness and the
+power limit on every board type, console commands; 46 unit tests on
+native_sim, including the spec's examples byte for byte. App:
+`packages/openboard-protocol` (codec and a request/reply session, 30 tests,
+the same example bytes) and the app choosing the protocol by name, with a
+brightness setting under Settings → Board. On the bench board and the Pixel:
+every protocol check passes (`npm run check` in the package), Kilter mode
+unchanged and deaf to OpenBoard packets, the app lights problems over API 1
+and sets brightness.
+
+*Found on the hardware:* saving a setting from Bluetooth overflowed the
+firmware's 1 KB system work queue stack and halted the board; OpenBoard
+packets now run on their own thread.
+
+*Next, optionally:* role colours per wall, now that any colour shows
+exactly; gamma correction.
+
 ## On forking boardsesh
 
 Borrow, do not fork. Its core assumption is a known fixed layout synced from a

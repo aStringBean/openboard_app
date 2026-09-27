@@ -7,6 +7,7 @@
     "@expo/ui": "~57.0.19",
     "@openboard/aurora-protocol": "*",
     "@openboard/hold-detect": "*",
+    "@openboard/openboard-protocol": "*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/react-native-skia": "2.6.2",
     "@supabase/supabase-js": "^2.117.1",

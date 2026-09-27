@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useConnection } from "../components/ConnectChip";
 import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
+import * as board from "../lib/board";
 import { gradeLabel, type GradeScale } from "../lib/grades";
 import {
   angleRange,
@@ -78,6 +80,8 @@ export function SettingsScreen() {
             ) : null}
           </>
         )}
+
+        <BoardSettings />
 
         <Text style={styles.section}>Grades</Text>
         <Segmented<GradeScale>
@@ -209,6 +213,86 @@ const styles = StyleSheet.create({
   linkTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
   dim: { color: theme.dim, fontSize: 13 },
 });
+
+/* Brightness in steps a person can tell apart; the board takes 1-255. */
+const BRIGHTNESS_STEPS = [10, 25, 50, 75, 100];
+const toValue = (pct: number) => Math.max(1, Math.round((pct * 255) / 100));
+const nearestStep = (value: number) =>
+  BRIGHTNESS_STEPS.reduce((a, b) => (Math.abs(toValue(b) - value) < Math.abs(toValue(a) - value) ? b : a));
+
+/** The connected board's own settings, when it speaks OpenBoard API 1. */
+function BoardSettings() {
+  const conn = useConnection();
+  const [read, setSettings] = useState<Awaited<ReturnType<typeof board.readSettings>>>(null);
+  const [error, setError] = useState<string | null>(null);
+  const openboard = conn.status === "connected" && conn.protocol === "openboard";
+  /* Settings read from a board that has since gone mean nothing. */
+  const settings = openboard ? read : null;
+
+  useEffect(() => {
+    if (!openboard) return;
+    let live = true;
+    board.readSettings().then(
+      (s) => live && setSettings(s),
+      (err: unknown) => live && setError(err instanceof Error ? err.message : String(err)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [openboard]);
+
+  if (conn.status !== "connected") return null;
+
+  if (!openboard) {
+    return (
+      <>
+        <Text style={styles.section}>Board</Text>
+        <Text style={styles.dim}>
+          Connected in {conn.name.replace(/#.*$/, "")} mode. For full colour and brightness control from here, switch
+          the board to OpenBoard mode from its console: board setup openboard.
+        </Text>
+      </>
+    );
+  }
+
+  const setBrightness = async (pct: number) => {
+    setError(null);
+    try {
+      await board.setBrightness(toValue(pct));
+      setSettings(await board.readSettings());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const fw = conn.info?.firmware;
+
+  return (
+    <>
+      <Text style={styles.section}>Board</Text>
+      <Text style={styles.dim}>
+        OpenBoard{fw ? ` firmware ${fw.major}.${fw.minor}.${fw.patch}` : ""}
+        {settings ? ` · ${settings.chainLength} LEDs` : ""}
+      </Text>
+
+      <Text style={styles.label}>Brightness</Text>
+      {settings ? (
+        <Segmented<number>
+          options={BRIGHTNESS_STEPS.map((p) => ({ value: p, label: `${p}%` }))}
+          value={nearestStep(settings.brightness)}
+          onChange={(p) => void setBrightness(p)}
+        />
+      ) : null}
+      {settings ? (
+        <Text style={styles.dim}>
+          Power limit: a {settings.powerSupplyW} W supply, {settings.powerHeadroomPct}% of it for the LEDs. The board
+          dims any frame that would draw more. Set from the board&apos;s console.
+        </Text>
+      ) : null}
+      {error ? <Text style={[styles.dim, { color: theme.danger }]}>{error}</Text> : null}
+    </>
+  );
+}
 
 function AccountLink() {
   const router = useRouter();

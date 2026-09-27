@@ -11,7 +11,9 @@ export function useConnection(): board.ConnectionState {
 const label = (c: board.ConnectionState): string => {
   switch (c.status) {
     case "connected":
-      return `${c.name.replace(/#.*$/, "")} · MTU ${c.mtu}`;
+      return c.info
+        ? `OpenBoard ${c.info.firmware.major}.${c.info.firmware.minor}.${c.info.firmware.patch}`
+        : `${c.name.replace(/#.*$/, "")} · MTU ${c.mtu}`;
     case "scanning":
       return "scanning…";
     case "connecting":

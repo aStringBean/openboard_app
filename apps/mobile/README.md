@@ -119,7 +119,8 @@ src/
     cloud.ts            Supabase client, session, sign-in
     photos.ts           wall photos in the app's documents
     legacy.ts           one-time import of the old AsyncStorage calibration
-    board.ts            BLE: scan, connect, MTU, serialised writes, shared state
+    board.ts            BLE: scan, connect, MTU, writes; Aurora API 3 or, for a
+                        board advertising "OpenBoard", OpenBoard API 1
     detectPhoto.ts      Skia decode → @openboard/hold-detect
     outliers.ts         neighbour-based mis-tap detection
   components/           WallCanvas, ConnectChip, pickers

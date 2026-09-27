@@ -21,3 +21,25 @@ export function toBase64(bytes: Uint8Array): string {
 
   return out;
 }
+
+const LOOKUP = new Map([...ALPHABET].map((c, i) => [c, i]));
+
+/** Notification values arrive as base64 too. */
+export function fromBase64(text: string): Uint8Array {
+  const clean = text.replace(/[^A-Za-z0-9+/]/g, "");
+  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  let n = 0;
+
+  for (let i = 0; i < clean.length; i += 4) {
+    const c0 = LOOKUP.get(clean[i]!) ?? 0;
+    const c1 = LOOKUP.get(clean[i + 1] ?? "A") ?? 0;
+    const c2 = clean[i + 2] === undefined ? undefined : LOOKUP.get(clean[i + 2]!);
+    const c3 = clean[i + 3] === undefined ? undefined : LOOKUP.get(clean[i + 3]!);
+
+    out[n++] = (c0 << 2) | (c1 >> 4);
+    if (c2 !== undefined) out[n++] = ((c1 & 0x0f) << 4) | (c2 >> 2);
+    if (c3 !== undefined && c2 !== undefined) out[n++] = ((c2 & 0x03) << 6) | c3;
+  }
+
+  return out.subarray(0, n);
+}
