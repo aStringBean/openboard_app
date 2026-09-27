@@ -503,8 +503,13 @@ and sets brightness.
 firmware's 1 KB system work queue stack and halted the board; OpenBoard
 packets now run on their own thread.
 
-*Next, optionally:* role colours per wall, now that any colour shows
-exactly; gamma correction.
+*Role colours per wall (2026-09-27):* the owner picks each role's colour
+from a 16-colour palette (Settings → Hold colours), with a side-by-side
+preview on the wall; walls store only the roles they change, synced with
+the wall. No-match now defaults to cyan, next to hand's blue. Verified on
+the Pixel against the bench board.
+
+*Next, optionally:* gamma correction.
 
 ## On forking boardsesh
 
