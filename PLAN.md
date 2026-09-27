@@ -476,6 +476,17 @@ length, firmware version, per-packet ack). Keep the emulation modes so vendor
 apps still work. Genuinely optional — the board already does what the app
 needs.
 
+*Specified (2026-09-27):* **OpenBoard API 1**, in the firmware repository at
+`docs/openboard-api-1.md`. Decisions: it rides in the Aurora packet envelope
+with its own message-type bytes (`0xB0`–`0xBF`), so it works in every
+Aurora-family mode and vendor apps never meet it; 5-byte records (position,
+red, green, blue); brightness becomes a runtime setting applied as
+`value × brightness / 255`; a power limit scales frames to the supply
+(this wall: 12 V, 200 W, 80 % headroom); gamma off. Power and gamma are
+set from the firmware console only, never over Bluetooth. The app finds
+the firmware by asking for `INFO` and falls back to Aurora API 3 when no
+answer comes.
+
 ## On forking boardsesh
 
 Borrow, do not fork. Its core assumption is a known fixed layout synced from a
