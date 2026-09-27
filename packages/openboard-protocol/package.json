@@ -1,0 +1,30 @@
+{
+  "name": "@openboard/openboard-protocol",
+  "version": "0.1.0",
+  "description": "OpenBoard API 1 codec: the native protocol of the open_board_leds firmware",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "uv run --quiet --with bleak python3 tools/openboard_check.py"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

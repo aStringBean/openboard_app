@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "build:protocol": "npm run build --workspace @openboard/aurora-protocol",
+    "build:protocol": "npm run build --workspace @openboard/aurora-protocol --workspace @openboard/openboard-protocol",
     "android": "npm run android --workspace @openboard/mobile",
     "calibrate:web": "node prototypes/calibration-web/serve.mjs"
   }

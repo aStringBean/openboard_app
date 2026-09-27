@@ -6,8 +6,8 @@ Encodes its own packets from the spec (the firmware's
 docs/openboard-api-1.md), independently of the app's encoder, and checks
 every reply. Leaves the board's brightness as it found it and the strip dark.
 
-    uv run --with bleak tools/openboard_check.py [--address XX:..]
-    uv run --with bleak tools/openboard_check.py --aurora-mode
+    npm run check [-- --address XX:..]  (in packages/openboard-protocol)
+    npm run check -- --aurora-mode
 """
 
 import argparse
