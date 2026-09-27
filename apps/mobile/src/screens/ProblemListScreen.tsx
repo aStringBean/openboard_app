@@ -9,6 +9,7 @@ import { useFocusReload } from "../components/useFocusReload";
 import { activeFilterCount, applyFilter, DEFAULT_FILTER, SORTS, type ProblemSummary } from "../lib/catalog";
 import { loadCalibration, listProblems } from "../lib/db/repo";
 import { canEditWall, canSet } from "../lib/wall";
+import { browseFrom } from "../lib/browse";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -105,7 +106,10 @@ export function ProblemListScreen() {
             onChangeText={(search) => setFilter({ ...filter, search })}
             returnKeyType="search"
           />
-          <Pressable style={[styles.filterBtn, active > 0 && styles.filterBtnOn]} onPress={() => router.push("/filter")}>
+          <Pressable
+            style={[styles.filterBtn, active > 0 && styles.filterBtnOn]}
+            onPress={() => router.push("/filter")}
+          >
             <Text style={[styles.filterText, active > 0 && styles.filterTextOn]}>
               Filters{active ? ` · ${active}` : ""}
             </Text>
@@ -116,8 +120,8 @@ export function ProblemListScreen() {
       {wallReady && problems?.length ? (
         <View style={styles.countRow}>
           <Text style={styles.dim}>
-            {shown.length === problems.length ? `${problems.length}` : `${shown.length} of ${problems.length}`}{" "}
-            problem{problems.length === 1 ? "" : "s"} · {SORTS.find((x) => x.value === filter.sort)?.label.toLowerCase()}
+            {shown.length === problems.length ? `${problems.length}` : `${shown.length} of ${problems.length}`} problem
+            {problems.length === 1 ? "" : "s"} · {SORTS.find((x) => x.value === filter.sort)?.label.toLowerCase()}
           </Text>
           {active || filter.search ? (
             <Pressable hitSlop={8} onPress={() => setFilter({ ...DEFAULT_FILTER, sort: filter.sort })}>
@@ -168,7 +172,10 @@ export function ProblemListScreen() {
               gradeScale={gradeScale}
               showAngle={adjustable}
               dimmed={adjustable && item.angle !== wall.currentAngle}
-              onPress={() => router.push(`/problem/${item.id}`)}
+              onPress={() => {
+                browseFrom(shown.map((p) => p.id));
+                router.push(`/problem/${item.id}`);
+              }}
             />
           )}
         />

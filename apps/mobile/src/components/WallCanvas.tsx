@@ -36,6 +36,12 @@ interface Props {
   onTap: (x: number, y: number, zoom: number) => void;
   onMoveSelected?: (x: number, y: number) => void;
   onZoomChange?: (zoom: number) => void;
+  /**
+   * A horizontal swipe while not zoomed in: 1 to the left (next), -1 to the
+   * right (previous). At normal zoom a drag has nothing to pan, so it is free
+   * to mean this; zoomed in, a drag pans as ever.
+   */
+  onSwipe?: (direction: 1 | -1) => void;
   ref?: Ref<WallCanvasHandle>;
 }
 
@@ -85,6 +91,7 @@ export function WallCanvas({
   onTap,
   onMoveSelected,
   onZoomChange,
+  onSwipe,
   ref,
 }: Props) {
   const scale = useSharedValue(1);
@@ -204,7 +211,7 @@ export function WallCanvas({
         tx.value = Math.min(limitX, Math.max(-limitX, savedTx.value + e.translationX));
         ty.value = Math.min(limitY, Math.max(-limitY, savedTy.value + e.translationY));
       })
-      .onEnd(() => {
+      .onEnd((e) => {
         if (dragging.value) {
           dragging.value = 0;
           if (onMoveSelected) runOnJS(onMoveSelected)(selX.value, selY.value);
@@ -213,6 +220,13 @@ export function WallCanvas({
 
         savedTx.value = tx.value;
         savedTy.value = ty.value;
+
+        /* Far enough, or fast enough, and mostly sideways. */
+        const sideways = Math.abs(e.translationX) > 1.5 * Math.abs(e.translationY);
+        const far = Math.abs(e.translationX) > width * 0.2 || Math.abs(e.velocityX) > 600;
+        if (onSwipe && scale.value <= 1.01 && sideways && far && Math.abs(e.translationX) > 30) {
+          runOnJS(onSwipe)(e.translationX < 0 ? 1 : -1);
+        }
       });
 
     const tap = Gesture.Tap()
@@ -229,6 +243,7 @@ export function WallCanvas({
     onTap,
     onMoveSelected,
     onZoomChange,
+    onSwipe,
     scale,
     savedScale,
     tx,

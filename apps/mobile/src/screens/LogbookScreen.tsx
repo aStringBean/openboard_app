@@ -8,6 +8,7 @@ import { useFocusReload } from "../components/useFocusReload";
 import { logbook, type LogEntry } from "../lib/db/repo";
 import { gradeLabel } from "../lib/grades";
 import { isFlash, shortDate } from "../lib/tick";
+import { browseFrom } from "../lib/browse";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -53,13 +54,24 @@ export function LogbookScreen() {
           entries ? <Text style={[styles.dim, styles.empty]}>No ascents yet. Tick a problem to log one.</Text> : null
         }
         renderItem={({ item }) => (
-          <Pressable style={styles.row} onPress={() => router.push(`/problem/${item.problemId}`)}>
+          <Pressable
+            style={styles.row}
+            onPress={() => {
+              browseFrom((entries ?? []).map((e) => e.problemId));
+              router.push(`/problem/${item.problemId}`);
+            }}
+          >
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.name} numberOfLines={1}>
                 {item.problemName}
               </Text>
               <Text style={styles.dim}>
-                {shortDate(item.climbedAt)} · {firsts.get(item.problemId) === item && isFlash(item) ? "flash" : isFlash(item) ? "one go" : `${item.attempts} goes`}
+                {shortDate(item.climbedAt)} ·{" "}
+                {firsts.get(item.problemId) === item && isFlash(item)
+                  ? "flash"
+                  : isFlash(item)
+                    ? "one go"
+                    : `${item.attempts} goes`}
                 {wall.angleMode === "adjustable" ? ` · ${item.angle}°` : ""}
               </Text>
             </View>

@@ -17,6 +17,7 @@ import {
   setListShared,
 } from "../lib/db/repo";
 import { move } from "../lib/order";
+import { browseFrom } from "../lib/browse";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -122,7 +123,10 @@ export function ListDetailScreen() {
             item={item}
             gradeScale={gradeScale}
             showAngle={adjustable}
-            onPress={() => router.push(`/problem/${item.id}`)}
+            onPress={() => {
+              browseFrom((items ?? []).map((p) => p.id));
+              router.push(`/problem/${item.id}`);
+            }}
             right={
               owner !== null ? undefined : (
                 <View style={styles.reorder}>

@@ -34,6 +34,7 @@ import {
   type Role,
 } from "../lib/problem";
 import { canEditProblem, canSet } from "../lib/wall";
+import { browseNothing } from "../lib/browse";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
 
@@ -128,7 +129,10 @@ export function ProblemEditorScreen() {
       await saveProblem(db, problem);
       /* A new problem opens in its own view; an edited one returns to it. */
       if (original) router.back();
-      else router.replace(`/problem/${problem.id}`);
+      else {
+        browseNothing();
+        router.replace(`/problem/${problem.id}`);
+      }
     } catch (err) {
       setSaving(false);
       Alert.alert("Could not save", err instanceof Error ? err.message : String(err));
