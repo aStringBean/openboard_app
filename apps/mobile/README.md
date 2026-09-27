@@ -65,6 +65,21 @@ supabase config push --workdir hosted        # 6-digit codes, sign-in email
 `hosted/supabase/config.toml` declares only what production needs; the main
 config also holds local-development values that `config push` would send.
 
+Email needs custom SMTP (Authentication → Emails → SMTP Settings in the
+dashboard): on the free tier, templates cannot be changed on Supabase's own
+sender, and the app's sign-in needs the template that shows the code. If
+sign-in fails with "error sending confirmation email", the auth log names
+the SMTP error; `python3 hosted/smtp-check.py` tests the SMTP login from
+here, asking for the password without echoing it.
+
+A release build, pointed at the hosted server, installs over a development
+build and keeps the phone's data:
+
+```shell
+cd android && ./gradlew assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
 A phone moving from one server to another keeps the walls it owns, as its
 own again, to share on the new server; walls it joined elsewhere go.
 

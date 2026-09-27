@@ -452,10 +452,23 @@ server keeps the walls the phone owns (`lib/account.ts`).
 
 - A problem that breaks the start/finish limit, set before the limit
   existed, is refused by the server until edited; its ascents wait with it.
-- Hosted Supabase (in progress): the project is the user's to create. Its
-  default email sender only reaches the project's own team, a few emails an
-  hour — fine for testing, but inviting friends needs custom SMTP (Resend,
-  Postmark, …) set in the dashboard.
+- Friends need the release APK sideloaded until the app is in a store.
+
+*Hosted (2026-09-27).* Supabase project "Openboard" (ca-central-1), schema
+pushed with `supabase db push`, auth settings from `hosted/`. Email goes out
+through Proton SMTP as `openboard@philipmackie.ca` (the user's domain on
+Porkbun, DNS verified with Proton): a free-tier project may not change its
+email templates on Supabase's built-in sender, and that sender only reaches
+the project's own team anyway. Release builds point at it through
+`apps/mobile/.env.production.local`. The Pixel runs the release build, signed
+in, and its wall is shared there: photo, 503 holds, 3 problems and 3
+ascents verified in the hosted database.
+
+*Learned on the way:* the phone had been set up by a development build
+that never recorded which account and server its shared wall came from, so
+the release build could not tell the server had changed; the record was
+written by hand before signing in. Any install from before
+`lib/account.ts` would need the same.
 
 **5 — Firmware native mode.** Add an `OPENBOARD` board type with full 24-bit
 RGB, config read/write, and notifications back to the app (board mode, chain
