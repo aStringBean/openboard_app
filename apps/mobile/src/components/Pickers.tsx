@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { chooseGrade, gradeOptions, optionMatches, type GradeScale } from "../lib/grades";
-import { ROLE_LIMITS, ROLE_STYLE, ROLES, type Role } from "../lib/problem";
+import { ROLE_LIMITS, ROLE_STYLE, ROLES, roleUi, type Role, type RoleColors } from "../lib/problem";
 import { theme } from "../theme";
 
 /** A horizontally scrolling row of choices. */
@@ -73,15 +73,18 @@ export function RolePalette({
   active,
   counts,
   onSelect,
+  colors,
 }: {
   active: Role;
   counts: Record<Role, number>;
   onSelect: (role: Role) => void;
+  colors?: RoleColors;
 }) {
   return (
     <View style={styles.palette}>
       {ROLES.map((role) => {
-        const { label, ui } = ROLE_STYLE[role];
+        const { label } = ROLE_STYLE[role];
+        const ui = roleUi(role, colors);
         const on = role === active;
         return (
           <Pressable

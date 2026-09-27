@@ -1,6 +1,7 @@
 /**
  * A wall's settings. Pure, so it can be tested in Node.
  */
+import type { RoleColors } from "./problem";
 
 export type AngleMode = "fixed" | "adjustable";
 export type WallRole = "owner" | "setter" | "climber";
@@ -23,6 +24,8 @@ export interface Wall {
   /** My role on a shared wall; null on a wall that is not shared. */
   role: WallRole | null;
   setterPolicy: SetterPolicy;
+  /** The roles this wall lights in its own colours; the rest follow the defaults. */
+  roleColors: RoleColors;
 }
 
 /*

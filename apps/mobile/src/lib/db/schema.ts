@@ -142,6 +142,11 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX outbox_by_wall ON outbox (wall_id, seq);
   `,
+
+  /* 5: a wall's own role colours, as JSON: only the roles it has changed. */
+  `
+  ALTER TABLE wall ADD COLUMN role_colors TEXT NOT NULL DEFAULT '{}';
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

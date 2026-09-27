@@ -344,6 +344,16 @@ describe("sync between two phones", () => {
     expect(await pendingChanges(climber.db, wallId)).toEqual([]);
   });
 
+  it("gives members the wall's own role colours", async () => {
+    const orange = { r: 255, g: 96, b: 0 };
+    const wall = await getWall(owner.db, wallId);
+    await updateWall(owner.db, { ...wall, roleColors: { no_match: orange } });
+    expect(await owner.sync(wallId)).toMatchObject({ failed: 0 });
+
+    await climber.sync(wallId);
+    expect((await getWall(climber.db, wallId)).roleColors).toEqual({ no_match: orange });
+  });
+
   it("hands the wall to a member, and back", async () => {
     await transferWall(owner.db, owner.sb, wallId, climber.me);
     expect((await getWall(owner.db, wallId)).role).toBe("setter");

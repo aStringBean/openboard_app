@@ -110,7 +110,16 @@ describe("walls", () => {
       cloud: false,
       role: null,
       setterPolicy: "everyone",
+      roleColors: {},
     });
+  });
+
+  it("saves the wall's own role colours", async () => {
+    const wall = await createWall(db, WALL, "Garage");
+    const orange = { r: 255, g: 96, b: 0 };
+    await updateWall(db, { ...wall, roleColors: { no_match: orange } });
+
+    expect((await getWall(db, WALL)).roleColors).toEqual({ no_match: orange });
   });
 
   it("saves angle settings", async () => {

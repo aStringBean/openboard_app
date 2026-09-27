@@ -60,6 +60,11 @@ export function SettingsScreen() {
           </Text>
         </Pressable>
 
+        <Pressable style={styles.link} onPress={() => router.push("/colours")}>
+          <Text style={styles.linkTitle}>Hold colours</Text>
+          <Text style={styles.dim}>What start, hand, no-match, foot and finish light up in</Text>
+        </Pressable>
+
         {canEditWall(wall) ? (
           <WallSettings />
         ) : (

@@ -78,12 +78,12 @@ export function ProblemEditorScreen() {
    * what a climber will. Also re-sends when the board connects mid-edit. */
   useEffect(() => {
     if (!cal || conn.status !== "connected") return;
-    void board.send(problemFrame(holds, cal.holds).leds);
-  }, [holds, cal, conn.status]);
+    void board.send(problemFrame(holds, cal.holds, wall.roleColors).leds);
+  }, [holds, cal, conn.status, wall.roleColors]);
 
   const roles = useMemo(() => new Map(holds.map((h) => [h.holdId, h.role])), [holds]);
   const counts = useMemo(() => countRoles(holds), [holds]);
-  const unlit = useMemo(() => (cal ? problemFrame(holds, cal.holds).unlit : 0), [holds, cal]);
+  const unlit = useMemo(() => (cal ? problemFrame(holds, cal.holds, wall.roleColors).unlit : 0), [holds, cal, wall.roleColors]);
 
 
   const onTap = useCallback(
@@ -169,6 +169,7 @@ export function ProblemEditorScreen() {
             height={canvasHeight}
             holds={cal.holds}
             problemRoles={roles}
+            roleColors={wall.roleColors}
             showUnused
             onTap={onTap}
           />
@@ -177,6 +178,7 @@ export function ProblemEditorScreen() {
 
       <View style={styles.paletteBar}>
         <RolePalette
+          colors={wall.roleColors}
           active={role}
           counts={counts}
           onSelect={(r) => {

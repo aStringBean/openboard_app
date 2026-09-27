@@ -4,7 +4,14 @@ import {
   countRoles,
   newId,
   problemFrame,
+  clashingRoles,
+  PALETTE,
+  parseRoleColors,
+  rgbHex,
+  roleLed,
+  roleUi,
   ROLE_STYLE,
+  withRoleColor,
   roleFull,
   ROLES,
   toggleRole,
@@ -85,7 +92,7 @@ describe("problemFrame", () => {
 
     expect(leds).toEqual([
       { pos: 10, r: 0, g: 255, b: 0 },
-      { pos: 11, r: 255, g: 0, b: 255 },
+      { pos: 11, r: 0, g: 255, b: 255 },
     ]);
     expect(unlit).toBe(0);
   });
@@ -116,6 +123,62 @@ describe("role colours", () => {
     for (const r of ROLES) {
       for (const v of Object.values(ROLE_STYLE[r].led)) expect([0, 255]).toContain(v);
     }
+  });
+
+  it("put no-match next to hand: cyan beside blue", () => {
+    expect(ROLE_STYLE.no_match.led).toEqual({ r: 0, g: 255, b: 255 });
+    expect(ROLE_STYLE.hand.led).toEqual({ r: 0, g: 0, b: 255 });
+  });
+
+  it("follow a wall's own colours, and the defaults for the rest", () => {
+    const orange = { r: 255, g: 96, b: 0 };
+    const { leds } = problemFrame(
+      [
+        { holdId: 1, role: "start" },
+        { holdId: 2, role: "hand" },
+      ],
+      [
+        { id: 1, led: 10 },
+        { id: 2, led: 11 },
+      ],
+      { start: orange },
+    );
+    expect(leds).toEqual([
+      { pos: 10, ...orange },
+      { pos: 11, ...ROLE_STYLE.hand.led },
+    ]);
+    expect(roleLed("finish", { start: orange })).toEqual(ROLE_STYLE.finish.led);
+  });
+
+  it("draw a chosen colour softened on screen, a default as tuned", () => {
+    expect(roleUi("hand")).toBe(ROLE_STYLE.hand.ui);
+    expect(roleUi("hand", { hand: { r: 0, g: 0, b: 255 } })).toBe("#4040ff");
+    expect(rgbHex({ r: 255, g: 96, b: 0 })).toBe("#ff6000");
+  });
+
+  it("store only what differs from the default", () => {
+    const orange = { r: 255, g: 96, b: 0 };
+    const changed = withRoleColor({}, "start", orange);
+    expect(changed).toEqual({ start: orange });
+    expect(withRoleColor(changed, "start", ROLE_STYLE.start.led)).toEqual({});
+  });
+
+  it("read back only well-formed colours for known roles", () => {
+    expect(parseRoleColors('{"hand":{"r":1,"g":2,"b":3},"bogus":{"r":1,"g":1,"b":1}}')).toEqual({
+      hand: { r: 1, g: 2, b: 3 },
+    });
+    expect(parseRoleColors({ start: { r: 300, g: 0, b: 0 }, foot: { r: 1, g: 2 } })).toEqual({});
+    expect(parseRoleColors("not json")).toEqual({});
+    expect(parseRoleColors(null)).toEqual({});
+  });
+
+  it("find roles that would light alike", () => {
+    expect(clashingRoles({})).toEqual([]);
+    expect(clashingRoles({ no_match: ROLE_STYLE.hand.led })).toEqual(["hand", "no_match"]);
+  });
+
+  it("offer a palette of distinct colours", () => {
+    expect(new Set(PALETTE.map((p) => rgbHex(p.led))).size).toBe(PALETTE.length);
   });
 });
 

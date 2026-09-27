@@ -6,23 +6,111 @@ import type { Led } from "@openboard/aurora-protocol";
 export const ROLES = ["start", "hand", "no_match", "foot", "finish"] as const;
 export type Role = (typeof ROLES)[number];
 
+export interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
 /**
- * How each role looks, on the wall and on screen.
+ * How each role looks by default, on the wall and on screen.
  *
- * LED colours are all drawn from the eight that Aurora API 3 reproduces
- * exactly, so the wall shows precisely what the app intends. On screen the
+ * The default LED colours are all among the eight Aurora API 3 reproduces
+ * exactly, so they show true on a board in Kilter mode too. On screen the
  * same hues are softened, since pure #00ff00 over a photo is hard to read.
  *
- * No-match is magenta: of the three exact colours left after the four core
- * roles, it is the least like hand's blue on a real strip.
+ * No-match is cyan: a hand hold with a rule attached, so a colour next to
+ * hand's blue, but a different one on the strip.
  */
-export const ROLE_STYLE: Record<Role, { label: string; led: { r: number; g: number; b: number }; ui: string }> = {
+export const ROLE_STYLE: Record<Role, { label: string; led: Rgb; ui: string }> = {
   start: { label: "Start", led: { r: 0, g: 255, b: 0 }, ui: "#3ddc84" },
   hand: { label: "Hand", led: { r: 0, g: 0, b: 255 }, ui: "#4d8dff" },
-  no_match: { label: "No-match", led: { r: 255, g: 0, b: 255 }, ui: "#ff4df2" },
+  no_match: { label: "No-match", led: { r: 0, g: 255, b: 255 }, ui: "#45d9f0" },
   foot: { label: "Foot", led: { r: 255, g: 255, b: 0 }, ui: "#ffd23d" },
   finish: { label: "Finish", led: { r: 255, g: 0, b: 0 }, ui: "#ff5a4d" },
 };
+
+/**
+ * A wall's own role colours: only the roles it has changed. A role left out
+ * follows the default, including any later change to the default.
+ */
+export type RoleColors = Partial<Record<Role, Rgb>>;
+
+/** Colours to choose from: bright, distinct on a strip, at full scale. */
+export const PALETTE: readonly { name: string; led: Rgb }[] = [
+  { name: "Red", led: { r: 255, g: 0, b: 0 } },
+  { name: "Orange", led: { r: 255, g: 96, b: 0 } },
+  { name: "Amber", led: { r: 255, g: 176, b: 0 } },
+  { name: "Yellow", led: { r: 255, g: 255, b: 0 } },
+  { name: "Lime", led: { r: 128, g: 255, b: 0 } },
+  { name: "Green", led: { r: 0, g: 255, b: 0 } },
+  { name: "Spring", led: { r: 0, g: 255, b: 128 } },
+  { name: "Cyan", led: { r: 0, g: 255, b: 255 } },
+  { name: "Sky", led: { r: 0, g: 128, b: 255 } },
+  { name: "Blue", led: { r: 0, g: 0, b: 255 } },
+  { name: "Indigo", led: { r: 64, g: 0, b: 255 } },
+  { name: "Violet", led: { r: 160, g: 0, b: 255 } },
+  { name: "Magenta", led: { r: 255, g: 0, b: 255 } },
+  { name: "Pink", led: { r: 255, g: 0, b: 96 } },
+  { name: "White", led: { r: 255, g: 255, b: 255 } },
+  { name: "Warm white", led: { r: 255, g: 160, b: 64 } },
+];
+
+export const sameRgb = (a: Rgb, b: Rgb) => a.r === b.r && a.g === b.g && a.b === b.b;
+
+/** The LED colour a role lights in, on a wall with these colours. */
+export const roleLed = (role: Role, colors?: RoleColors | null): Rgb => colors?.[role] ?? ROLE_STYLE[role].led;
+
+const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
+
+/**
+ * The colour a role is drawn in on screen. Defaults have hand-tuned screen
+ * colours; a chosen one is lightened a quarter towards white, which softens
+ * the pure LED hues the way the defaults are softened.
+ */
+export function roleUi(role: Role, colors?: RoleColors | null): string {
+  const c = colors?.[role];
+  if (!c) return ROLE_STYLE[role].ui;
+  const soft = (v: number) => v + (255 - v) * 0.25;
+  return `#${hex(soft(c.r))}${hex(soft(c.g))}${hex(soft(c.b))}`;
+}
+
+/** An LED colour as it looks on screen, unsoftened, for palette swatches. */
+export const rgbHex = (c: Rgb) => `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`;
+
+/** A wall's colours with one role changed; choosing the default removes the override. */
+export function withRoleColor(colors: RoleColors, role: Role, led: Rgb): RoleColors {
+  const next: RoleColors = { ...colors };
+  if (sameRgb(led, ROLE_STYLE[role].led)) delete next[role];
+  else next[role] = led;
+  return next;
+}
+
+/** Reads stored colours, keeping only well-formed entries for known roles. */
+export function parseRoleColors(raw: unknown): RoleColors {
+  let v = raw;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return {};
+    }
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+
+  const byte = (x: unknown) => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 255;
+  const out: RoleColors = {};
+  for (const role of ROLES) {
+    const c = (v as Record<string, unknown>)[role] as Partial<Rgb> | undefined;
+    if (c && byte(c.r) && byte(c.g) && byte(c.b)) out[role] = { r: c.r!, g: c.g!, b: c.b! };
+  }
+  return out;
+}
+
+/** Roles that would light in the same colour as another, so could not be told apart. */
+export function clashingRoles(colors: RoleColors): Role[] {
+  return ROLES.filter((a) => ROLES.some((b) => a !== b && sameRgb(roleLed(a, colors), roleLed(b, colors))));
+}
 
 export interface ProblemHold {
   holdId: number;
@@ -106,6 +194,7 @@ export function validateProblem(p: { name: string; holds: readonly ProblemHold[]
 export function problemFrame(
   holds: readonly ProblemHold[],
   wallHolds: readonly { id: number; led: number | null }[],
+  colors?: RoleColors | null,
 ): { leds: Led[]; unlit: number } {
   const ledOf = new Map(wallHolds.map((h) => [h.id, h.led]));
   const leds: Led[] = [];
@@ -117,7 +206,7 @@ export function problemFrame(
       unlit++;
       continue;
     }
-    leds.push({ pos: led, ...ROLE_STYLE[h.role].led });
+    leds.push({ pos: led, ...roleLed(h.role, colors) });
   }
 
   return { leds, unlit };

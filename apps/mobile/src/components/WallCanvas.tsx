@@ -10,7 +10,7 @@ import Animated, {
 
 import { theme } from "../theme";
 import type { WallHold } from "../lib/calibration";
-import { ROLE_STYLE, type Role } from "../lib/problem";
+import { roleUi, type Role, type RoleColors } from "../lib/problem";
 
 interface Props {
   photoUri: string;
@@ -25,6 +25,8 @@ interface Props {
    * instead of the calibration view's LED markers.
    */
   problemRoles?: ReadonlyMap<number, Role>;
+  /** The wall's own role colours; defaults for the rest. */
+  roleColors?: RoleColors;
   /** In problem mode, also draw the holds not in the problem, faintly, as targets. */
   showUnused?: boolean;
   selectedId?: number | null;
@@ -76,6 +78,7 @@ export function WallCanvas({
   holds,
   highlightLed,
   problemRoles,
+  roleColors,
   showUnused = false,
   selectedId = null,
   editing = false,
@@ -287,7 +290,7 @@ export function WallCanvas({
           );
         }
 
-        const colour = ROLE_STYLE[role].ui;
+        const colour = roleUi(role, roleColors);
         const size = ring * 1.5;
         return (
           <View
@@ -364,7 +367,7 @@ export function WallCanvas({
         </View>
       );
     });
-  }, [holds, zoom, highlightLed, selectedId, problemRoles, showUnused, width, height]);
+  }, [holds, zoom, highlightLed, selectedId, problemRoles, roleColors, showUnused, width, height]);
 
   return (
     <GestureDetector gesture={gesture}>

@@ -6,6 +6,7 @@ const wall: Wall = { id: "w", name: "Garage", angleMode: "fixed", angles: [40], 
   cloud: false,
   role: null,
   setterPolicy: "everyone",
+  roleColors: {},
 };
 
 describe("angleRange", () => {

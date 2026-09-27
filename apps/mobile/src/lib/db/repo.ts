@@ -1,6 +1,6 @@
 import { emptyCalibration, type Calibration, type WallHold } from "../calibration";
 import { summarise, type ProblemSummary } from "../catalog";
-import type { Problem, Role } from "../problem";
+import { parseRoleColors, type Problem, type Role } from "../problem";
 import type { Tick } from "../tick";
 import { DEFAULT_FIXED_ANGLE, type AngleMode, type SetterPolicy, type Wall, type WallRole } from "../wall";
 import type { Db } from "./types";
@@ -19,6 +19,7 @@ interface WallRow {
   cloud: number;
   my_role: WallRole | null;
   setter_policy: SetterPolicy;
+  role_colors: string;
 }
 
 /** Sweep bookkeeping. It is only ever read and written whole, so it is JSON. */
@@ -46,6 +47,7 @@ const wallOf = (r: WallRow): Wall => ({
   cloud: r.cloud === 1,
   role: r.my_role,
   setterPolicy: r.setter_policy,
+  roleColors: parseRoleColors(r.role_colors),
 });
 
 export async function firstWall(db: Db): Promise<Wall | undefined> {
@@ -93,8 +95,17 @@ export async function createWall(
 
 export async function updateWall(db: Db, wall: Wall): Promise<void> {
   await db.run(
-    "UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ? WHERE id = ?",
-    [wall.name, wall.angleMode, JSON.stringify(wall.angles), wall.currentAngle, wall.setterPolicy, wall.id],
+    `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, role_colors = ?
+     WHERE id = ?`,
+    [
+      wall.name,
+      wall.angleMode,
+      JSON.stringify(wall.angles),
+      wall.currentAngle,
+      wall.setterPolicy,
+      JSON.stringify(wall.roleColors),
+      wall.id,
+    ],
   );
   /* On a shared wall only the owner's changes go up; a member's only
    * change is which angle the wall is at, and that stays on their phone. */

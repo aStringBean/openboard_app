@@ -61,6 +61,7 @@ export function FilterHoldsScreen() {
             height={canvasHeight}
             holds={cal.holds}
             problemRoles={roles}
+            roleColors={wall.roleColors}
             showUnused
             onTap={onTap}
           />

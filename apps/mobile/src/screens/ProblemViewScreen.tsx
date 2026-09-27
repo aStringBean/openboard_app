@@ -23,7 +23,7 @@ import {
   type CommentView,
 } from "../lib/db/repo";
 import { gradeLabel } from "../lib/grades";
-import { countRoles, newId, problemFrame, ROLE_STYLE, ROLES, type Problem } from "../lib/problem";
+import { countRoles, newId, problemFrame, ROLE_STYLE, ROLES, roleUi, type Problem } from "../lib/problem";
 import { averageStars, byAngle, gradeAt, isFlash, shortDate, type Tick } from "../lib/tick";
 import { canEditProblem } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
@@ -67,7 +67,7 @@ export function ProblemViewScreen() {
   /* Reload on focus, so returning from the editor or a tick shows it. */
   useFocusReload(reload);
 
-  const frame = useMemo(() => (problem && cal ? problemFrame(problem.holds, cal.holds) : null), [problem, cal]);
+  const frame = useMemo(() => (problem && cal ? problemFrame(problem.holds, cal.holds, wall.roleColors) : null), [problem, cal, wall.roleColors]);
 
   const light = useCallback(() => {
     if (frame) void board.send(frame.leds);
@@ -177,6 +177,7 @@ export function ProblemViewScreen() {
             height={canvasHeight}
             holds={cal.holds}
             problemRoles={roles}
+            roleColors={wall.roleColors}
             onTap={() => {}}
           />
         ) : null}
@@ -202,7 +203,7 @@ export function ProblemViewScreen() {
         <View style={styles.legend}>
           {ROLES.filter((r) => counts[r] > 0).map((r) => (
             <View key={r} style={styles.legendItem}>
-              <View style={[styles.swatch, { backgroundColor: ROLE_STYLE[r].ui }]} />
+              <View style={[styles.swatch, { backgroundColor: roleUi(r, wall.roleColors) }]} />
               <Text style={styles.dim}>
                 {counts[r]} {ROLE_STYLE[r].label.toLowerCase()}
               </Text>

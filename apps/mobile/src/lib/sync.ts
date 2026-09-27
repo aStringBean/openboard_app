@@ -37,7 +37,7 @@ import {
   type OutboxEntry,
 } from "./db/repo";
 import type { Db } from "./db/types";
-import type { Role } from "./problem";
+import { parseRoleColors, type Role } from "./problem";
 import type { AngleMode, SetterPolicy, WallRole } from "./wall";
 
 /** Where photos live on this phone. Expo's file system on a phone, the disk in tests. */
@@ -260,6 +260,7 @@ async function sendWall(db: Db, sb: SupabaseClient, wallId: string) {
     current_angle: number;
     setter_policy: SetterPolicy;
     calibration: string;
+    role_colors: string;
   }>("SELECT * FROM wall WHERE id = ?", [wallId]);
   if (!w) return;
   const fields = {
@@ -269,6 +270,7 @@ async function sendWall(db: Db, sb: SupabaseClient, wallId: string) {
     current_angle: w.current_angle,
     setter_policy: w.setter_policy,
     chain_length: (JSON.parse(w.calibration) as { chainLength: number }).chainLength,
+    role_colors: parseRoleColors(w.role_colors),
   };
 
   /*
@@ -478,6 +480,7 @@ interface ServerWall {
   photo_aspect: number | null;
   photo_version: number;
   holds_version: number;
+  role_colors: unknown;
 }
 
 async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
@@ -490,9 +493,19 @@ async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
   const keepAngle = w.owner_id !== me && row !== undefined && w.angles.includes(row.current_angle);
   const angle = keepAngle ? row.current_angle : w.current_angle;
   await db.run(
-    `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, calibration = ?
+    `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, calibration = ?,
+                     role_colors = ?
      WHERE id = ?`,
-    [w.name, w.angle_mode, JSON.stringify(w.angles), angle, w.setter_policy, JSON.stringify(state), wallId],
+    [
+      w.name,
+      w.angle_mode,
+      JSON.stringify(w.angles),
+      angle,
+      w.setter_policy,
+      JSON.stringify(state),
+      JSON.stringify(parseRoleColors(w.role_colors)),
+      wallId,
+    ],
   );
 }
 

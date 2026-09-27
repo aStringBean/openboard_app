@@ -66,8 +66,8 @@ export function CircuitScreen() {
   /* Light each problem as it comes up, and again if the board reconnects. */
   useEffect(() => {
     if (!current || !cal || conn.status !== "connected") return;
-    void board.send(problemFrame(current.holds, cal.holds).leds);
-  }, [current, cal, conn.status]);
+    void board.send(problemFrame(current.holds, cal.holds, wall.roleColors).leds);
+  }, [current, cal, conn.status, wall.roleColors]);
 
   if (!problems || !cal) {
     return (
@@ -99,6 +99,7 @@ export function CircuitScreen() {
             height={canvasHeight}
             holds={cal.holds}
             problemRoles={roles}
+            roleColors={wall.roleColors}
             onTap={() => {}}
           />
         ) : null}
