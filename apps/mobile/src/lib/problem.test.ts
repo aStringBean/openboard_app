@@ -92,7 +92,7 @@ describe("problemFrame", () => {
 
     expect(leds).toEqual([
       { pos: 10, r: 0, g: 255, b: 0 },
-      { pos: 11, r: 0, g: 255, b: 255 },
+      { pos: 11, r: 255, g: 0, b: 255 },
     ]);
     expect(unlit).toBe(0);
   });
@@ -125,8 +125,8 @@ describe("role colours", () => {
     }
   });
 
-  it("put no-match next to hand: cyan beside blue", () => {
-    expect(ROLE_STYLE.no_match.led).toEqual({ r: 0, g: 255, b: 255 });
+  it("light no-match in magenta, well away from hand's blue", () => {
+    expect(ROLE_STYLE.no_match.led).toEqual({ r: 255, g: 0, b: 255 });
     expect(ROLE_STYLE.hand.led).toEqual({ r: 0, g: 0, b: 255 });
   });
 

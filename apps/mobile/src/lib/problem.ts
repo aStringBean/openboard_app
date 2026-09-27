@@ -19,13 +19,14 @@ export interface Rgb {
  * exactly, so they show true on a board in Kilter mode too. On screen the
  * same hues are softened, since pure #00ff00 over a photo is hard to read.
  *
- * No-match is cyan: a hand hold with a rule attached, so a colour next to
- * hand's blue, but a different one on the strip.
+ * No-match is magenta: of the three exact colours left after the four core
+ * roles, it is the least like hand's blue on a real strip. (Cyan was tried,
+ * as a colour next to hand's; magenta stayed.)
  */
 export const ROLE_STYLE: Record<Role, { label: string; led: Rgb; ui: string }> = {
   start: { label: "Start", led: { r: 0, g: 255, b: 0 }, ui: "#3ddc84" },
   hand: { label: "Hand", led: { r: 0, g: 0, b: 255 }, ui: "#4d8dff" },
-  no_match: { label: "No-match", led: { r: 0, g: 255, b: 255 }, ui: "#45d9f0" },
+  no_match: { label: "No-match", led: { r: 255, g: 0, b: 255 }, ui: "#ff4df2" },
   foot: { label: "Foot", led: { r: 255, g: 255, b: 0 }, ui: "#ffd23d" },
   finish: { label: "Finish", led: { r: 255, g: 0, b: 0 }, ui: "#ff5a4d" },
 };

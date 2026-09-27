@@ -506,8 +506,9 @@ packets now run on their own thread.
 *Role colours per wall (2026-09-27):* the owner picks each role's colour
 from a 16-colour palette (Settings → Hold colours), with a side-by-side
 preview on the wall; walls store only the roles they change, synced with
-the wall. No-match now defaults to cyan, next to hand's blue. Verified on
-the Pixel against the bench board.
+the wall. No-match stays magenta by default: cyan was tried on the wall, as a
+colour next to hand's blue, and magenta kept. Verified on the Pixel against
+the bench board.
 
 *Next, optionally:* gamma correction.
 
