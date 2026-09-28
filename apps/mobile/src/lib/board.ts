@@ -2,7 +2,6 @@ import { PermissionsAndroid, Platform } from "react-native";
 import { BleManager, type Device, type Subscription } from "react-native-ble-plx";
 import {
   chunkPacket,
-  DEVICE_NAMES,
   encodeAllOff,
   encodeFrame,
   NUS_RX_CHAR_UUID,
@@ -20,25 +19,19 @@ import {
 } from "@openboard/openboard-protocol";
 
 import { fromBase64, toBase64 } from "./base64";
+import { protocolFor, type Protocol } from "./boardName";
 
 /**
  * Which protocol a board speaks is decided by the name it advertises: the
  * firmware's board type picks both (docs/openboard-api-1.md, section 1).
- * "OpenBoard" speaks OpenBoard API 1: full colour, settings, replies. An
- * Aurora-family name speaks Aurora API 3, exactly as the vendor apps do.
+ * "OpenBoard" speaks OpenBoard API 1: full colour, settings, replies. Any
+ * Aurora-family board announcing API 3 is spoken to in Aurora API 3 only,
+ * exactly as the vendor apps do (see boardName.ts).
  */
-const AURORA_NAMES = new Set<string>([
-  DEVICE_NAMES.aurora,
-  DEVICE_NAMES.kilter,
-  DEVICE_NAMES.tension,
-  DEVICE_NAMES.decoy,
-  DEVICE_NAMES.grasshopper,
-]);
+export type { Protocol };
 
-export type Protocol = "aurora" | "openboard";
-
-const protocolFor = (name: string): Protocol | null =>
-  name === OPENBOARD_NAME ? "openboard" : AURORA_NAMES.has(name) ? "aurora" : null;
+/* Aurora frames always go as API 3, never the encoder's default of the day. */
+const AURORA_API = 3;
 
 const manager = new BleManager();
 
@@ -115,7 +108,7 @@ function scan(timeoutMs: number): Promise<Device> {
         return;
       }
 
-      if (found?.name && protocolFor(found.name)) {
+      if (found?.name && protocolFor(found.name, OPENBOARD_NAME)) {
         clearTimeout(timer);
         manager.stopDeviceScan();
         resolve(found);
@@ -173,7 +166,7 @@ export async function connect(timeoutMs = 15000): Promise<void> {
     onState({ status: "scanning" });
     const found = await scan(timeoutMs);
     const name = found.name ?? "board";
-    const protocol = protocolFor(name)!;
+    const protocol = protocolFor(name, OPENBOARD_NAME)!;
 
     onState({ status: "connecting", name });
 
@@ -224,7 +217,7 @@ export function send(leds: readonly Led[]): Promise<unknown> {
 
       /* Cap each packet at one BLE write, so a frame costs as few round trips
        * as the negotiated MTU allows and chunkPacket has nothing left to do. */
-      const opts = { maxPacketBytes: chunkSize };
+      const opts = { maxPacketBytes: chunkSize, api: AURORA_API } as const;
       const packets = leds.length ? encodeFrame(leds, opts) : encodeAllOff(opts);
 
       for (const packet of packets) {

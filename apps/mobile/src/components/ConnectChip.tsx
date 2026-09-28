@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import * as board from "../lib/board";
+import { familyOf } from "../lib/boardName";
 import { theme } from "../theme";
 
 export function useConnection(): board.ConnectionState {
@@ -13,7 +14,7 @@ const label = (c: board.ConnectionState): string => {
     case "connected":
       return c.info
         ? `OpenBoard ${c.info.firmware.major}.${c.info.firmware.minor}.${c.info.firmware.patch}`
-        : `${c.name.replace(/#.*$/, "")} · MTU ${c.mtu}`;
+        : `${familyOf(c.name)} · MTU ${c.mtu}`;
     case "scanning":
       return "scanning…";
     case "connecting":

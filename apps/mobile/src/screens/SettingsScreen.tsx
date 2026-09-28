@@ -8,6 +8,7 @@ import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
 import * as board from "../lib/board";
+import { familyOf } from "../lib/boardName";
 import { gradeLabel, type GradeScale } from "../lib/grades";
 import {
   angleRange,
@@ -253,7 +254,7 @@ function BoardSettings() {
       <>
         <Text style={styles.section}>Board</Text>
         <Text style={styles.dim}>
-          Connected in {conn.name.replace(/#.*$/, "")} mode. For full colour and brightness control from here, switch
+          Connected in {familyOf(conn.name)} mode. For full colour and brightness control from here, switch
           the board to OpenBoard mode from its console: board setup openboard.
         </Text>
       </>

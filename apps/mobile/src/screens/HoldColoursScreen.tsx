@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
 import * as board from "../lib/board";
+import { familyOf } from "../lib/boardName";
 import { loadCalibration } from "../lib/db/repo";
 import {
   clashingRoles,
@@ -155,7 +156,7 @@ export function HoldColoursScreen() {
             </Text>
             {conn.protocol === "aurora" ? (
               <Text style={styles.warn}>
-                The board is in {conn.name.replace(/#.*$/, "")} mode, which only carries a few colours
+                The board is in {familyOf(conn.name)} mode, which only carries a few colours
                 exactly; others show as the nearest it can. In OpenBoard mode every colour shows true.
               </Text>
             ) : null}
