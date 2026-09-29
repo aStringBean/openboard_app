@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { useConnection } from "../components/ConnectChip";
 import { AnglePicker, Segmented } from "../components/Pickers";
@@ -48,7 +49,7 @@ export function SettingsScreen() {
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       <Stack.Screen options={{ title: "Settings" }} />
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <Text style={styles.section}>Account</Text>
         <AccountLink />
 
@@ -103,7 +104,7 @@ export function SettingsScreen() {
           Shown as {gradeLabel(5, gradeScale)}. Grades are stored once and convert both ways, so switching never changes
           a problem&apos;s grade.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

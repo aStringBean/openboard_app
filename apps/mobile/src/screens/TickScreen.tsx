@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { AnglePicker, GradePicker, StarsInput } from "../components/Pickers";
 import { getProblem, saveTick, ticksFor } from "../lib/db/repo";
@@ -82,7 +83,11 @@ export function TickScreen() {
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       <Stack.Screen options={{ title: `Tick · ${problem.name}` }} />
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={24}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.label}>Attempts</Text>
         <View style={styles.stepper}>
           <Pressable style={styles.step} onPress={() => setAttempts((a) => Math.max(1, a - 1))}>
@@ -138,7 +143,7 @@ export function TickScreen() {
             <Text style={styles.primaryText}>Log ascent</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

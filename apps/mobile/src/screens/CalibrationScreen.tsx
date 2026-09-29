@@ -5,11 +5,11 @@ import {
   AppState,
   LayoutChangeEvent,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  ScrollView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Stack, useFocusEffect } from "expo-router";
@@ -20,6 +20,7 @@ import * as Sharing from "expo-sharing";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas, type WallCanvasHandle } from "../components/WallCanvas";
 import { CommitTextInput } from "../components/CommitTextInput";
+import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
 import * as board from "../lib/board";
 import {
   addHold,
@@ -426,18 +427,18 @@ export function CalibrationScreen() {
         ? `Clears every LED mapping and all timings, and removes unused holds. The ${usedRef.current.size} holds your problems use are kept, but will need mapping again.`
         : "Discards every hold and all timings.",
       [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Reset",
-        style: "destructive",
-        onPress: async () => {
-          sweepStartedAt.current = 0;
-          commit(resetCalibration(calRef.current, usedRef.current));
-          setSelectedId(null);
-          setMode("idle");
-          void board.blank();
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            sweepStartedAt.current = 0;
+            commit(resetCalibration(calRef.current, usedRef.current));
+            setSelectedId(null);
+            setMode("idle");
+            void board.blank();
+          },
         },
-      },
       ],
     );
 
@@ -448,7 +449,6 @@ export function CalibrationScreen() {
     setHighlight(null);
     void board.blank();
   };
-
 
   // ---------------------------------------------------------------- render
 
@@ -462,198 +462,191 @@ export function CalibrationScreen() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
-      <Stack.Screen options={{ title: mode === "editing" ? "Edit holds" : "Wall setup" }} />
+      {/* The panel sits where the keyboard comes up: lift the screen, and the photo gives way. */}
+      <LiftAboveKeyboard>
+        <Stack.Screen options={{ title: mode === "editing" ? "Edit holds" : "Wall setup" }} />
 
-      <View style={styles.canvas} onLayout={onCanvasLayout}>
-        {cal.photoUri && canvasWidth > 0 ? (
-          <WallCanvas
-            photoUri={cal.photoUri}
-            width={canvasWidth}
-            height={canvasHeight}
-            holds={cal.holds}
-            highlightLed={mode === "sweeping" ? cal.nextLed : highlight}
-            selectedId={mode === "editing" ? selectedId : null}
-            editing={mode === "editing"}
-            onTap={onTap}
-            onMoveSelected={onMoveSelected}
-            ref={canvasRef}
-          />
-        ) : (
-          <View style={styles.centre}>
-            <Text style={styles.dim}>Load a photo of your wall to begin.</Text>
-          </View>
-        )}
-
-        {detecting ? (
-          <View style={styles.busy}>
-            <ActivityIndicator color={theme.accent} />
-            <Text style={styles.dim}>Finding holds…</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {mode === "sweeping" ? (
-        <View style={styles.sweepBar}>
-          <View>
-            <Text style={styles.sweepLabel}>LED</Text>
-            <Text style={styles.sweepNum}>{cal.nextLed}</Text>
-          </View>
-          <Text style={styles.sweepHint}>Tap where it lit</Text>
-          <View style={styles.sweepBtns}>
-            <Pressable style={styles.btn} onPress={skip}>
-              <Text style={styles.btnText}>No hold</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={undo}>
-              <Text style={styles.btnText}>Undo</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={stopSweep}>
-              <Text style={styles.btnText}>Stop</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : mode === "editing" ? (
-        <View style={styles.editBar}>
-          <Text style={styles.editInfo}>
-            {selected
-              ? `Hold ${selected.id} · ${selected.led === null ? "no LED yet" : `LED ${selected.led}`} · ${selected.source}`
-              : "Tap a hold to select it, or empty wall to add one. Zoom in where holds are close together."}
-          </Text>
-          <View style={styles.editRow}>
-            <NudgeButton label="←" disabled={!selected} onStep={nudgeStep(-1, 0)} onRelease={nudgeRelease} />
-            <NudgeButton label="↑" disabled={!selected} onStep={nudgeStep(0, -1)} onRelease={nudgeRelease} />
-            <NudgeButton label="↓" disabled={!selected} onStep={nudgeStep(0, 1)} onRelease={nudgeRelease} />
-            <NudgeButton label="→" disabled={!selected} onStep={nudgeStep(1, 0)} onRelease={nudgeRelease} />
-          </View>
-          <View style={styles.editRow}>
-            <Pressable
-              style={[styles.btn, !selected && styles.btnDisabled]}
-              onPress={deleteSelected}
-              disabled={!selected}
-            >
-              <Text style={[styles.btnText, { color: theme.danger }]}>Delete</Text>
-            </Pressable>
-            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={exitEdit}>
-              <Text style={[styles.btnText, styles.btnTextPrimary]}>Done</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.dim}>
-            Drag the pink crosshair, or hold an arrow to move it. Moved and added holds are kept
-            when you re-detect.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner}>
-          <View style={styles.stats}>
-            <Stat label="Mapped" value={String(mapped.length)} />
-            <Stat label="No hold" value={String(cal.noHold.length)} />
-            <Stat label="Left" value={String(remaining)} />
-            <Stat label="Median" value={med === null ? "—" : `${(med / 1000).toFixed(2)}s`} />
-            <Stat label="Elapsed" value={clock(elapsed)} />
-            <Stat
-              label="Projected"
-              value={med === null ? "—" : clock(elapsed + med * remaining)}
-              warn
+        <View style={styles.canvas} onLayout={onCanvasLayout}>
+          {cal.photoUri && canvasWidth > 0 ? (
+            <WallCanvas
+              photoUri={cal.photoUri}
+              width={canvasWidth}
+              height={canvasHeight}
+              holds={cal.holds}
+              highlightLed={mode === "sweeping" ? cal.nextLed : highlight}
+              selectedId={mode === "editing" ? selectedId : null}
+              editing={mode === "editing"}
+              onTap={onTap}
+              onMoveSelected={onMoveSelected}
+              ref={canvasRef}
             />
-          </View>
+          ) : (
+            <View style={styles.centre}>
+              <Text style={styles.dim}>Load a photo of your wall to begin.</Text>
+            </View>
+          )}
 
-          <View style={styles.row}>
-            <Text style={styles.dim}>Chain length</Text>
-            <CommitTextInput
-              style={styles.input}
-              keyboardType="number-pad"
-              initial={String(cal.chainLength)}
-              commitWhile="done"
-              onCommit={(text) => {
-                const n = Number(text);
-                if (Number.isInteger(n) && n > 0 && n <= 1000) {
-                  commit({ ...calRef.current, chainLength: n });
-                }
-              }}
-            />
-          </View>
-
-          <View style={styles.btnRow}>
-            <Pressable
-              style={[styles.btn, cal.snapEnabled && styles.btnActive]}
-              onPress={() => commit({ ...calRef.current, snapEnabled: !calRef.current.snapEnabled })}
-            >
-              <Text style={styles.btnText}>Snap {cal.snapEnabled ? "on" : "off"}</Text>
-            </Pressable>
-            <Pressable
-              style={styles.btn}
-              onPress={() => cal.photoUri && runDetection(cal.photoUri)}
-              disabled={!cal.photoUri || detecting}
-            >
-              <Text style={styles.btnText}>Re-detect</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={enterEdit} disabled={!cal.photoUri}>
-              <Text style={styles.btnText}>Edit holds · {cal.holds.length}</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.btnRow}>
-            <Pressable style={styles.btn} onPress={pickPhoto}>
-              <Text style={styles.btnText}>{cal.photoUri ? "Change photo" : "Load photo"}</Text>
-            </Pressable>
-            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={startSweep}>
-              <Text style={[styles.btnText, styles.btnTextPrimary]}>
-                {decided > 0 ? "Resume sweep" : "Start sweep"}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.btnRow}>
-            <Pressable
-              style={[styles.btn, mode === "verifying" && styles.btnActive]}
-              onPress={toggleVerify}
-            >
-              <Text style={styles.btnText}>Verify</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={exportJson}>
-              <Text style={styles.btnText}>Export</Text>
-            </Pressable>
-            <Pressable style={styles.btn} onPress={reset}>
-              <Text style={[styles.btnText, { color: theme.danger }]}>Reset</Text>
-            </Pressable>
-          </View>
-
-          {mode === "verifying" ? (
-            <Text style={styles.dim}>Tap a hold; the board lights that LED.</Text>
-          ) : null}
-
-          <Text style={styles.dim}>
-            {cal.snapEnabled
-              ? "During a sweep, taps snap to the nearest free hold (blue dots) — tap anywhere on a hold. Fix missed or off-centre holds in Edit holds first."
-              : "Snap is off: during a sweep, markers land exactly where you tap."}
-          </Text>
-
-          {outliers.length > 0 ? (
-            <View style={styles.outliers}>
-              <Text style={styles.outlierTitle}>
-                {outliers.length} likely mis-tap{outliers.length > 1 ? "s" : ""}
-              </Text>
-              <Text style={styles.dim}>
-                Consecutive LEDs sit next to each other on the wall. These are far from both
-                neighbours — tap one to light it and check.
-              </Text>
-              <View style={styles.outlierRow}>
-                {outliers.slice(0, 12).map((o) => (
-                  <Pressable
-                    key={o.led}
-                    style={styles.outlierChip}
-                    onPress={() => {
-                      setHighlight(o.led);
-                      void board.lightOne(o.led, VERIFY_COLOUR);
-                    }}
-                  >
-                    <Text style={styles.outlierText}>{o.led}</Text>
-                  </Pressable>
-                ))}
-              </View>
+          {detecting ? (
+            <View style={styles.busy}>
+              <ActivityIndicator color={theme.accent} />
+              <Text style={styles.dim}>Finding holds…</Text>
             </View>
           ) : null}
-        </ScrollView>
-      )}
+        </View>
+
+        {mode === "sweeping" ? (
+          <View style={styles.sweepBar}>
+            <View>
+              <Text style={styles.sweepLabel}>LED</Text>
+              <Text style={styles.sweepNum}>{cal.nextLed}</Text>
+            </View>
+            <Text style={styles.sweepHint}>Tap where it lit</Text>
+            <View style={styles.sweepBtns}>
+              <Pressable style={styles.btn} onPress={skip}>
+                <Text style={styles.btnText}>No hold</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={undo}>
+                <Text style={styles.btnText}>Undo</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={stopSweep}>
+                <Text style={styles.btnText}>Stop</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : mode === "editing" ? (
+          <View style={styles.editBar}>
+            <Text style={styles.editInfo}>
+              {selected
+                ? `Hold ${selected.id} · ${selected.led === null ? "no LED yet" : `LED ${selected.led}`} · ${selected.source}`
+                : "Tap a hold to select it, or empty wall to add one. Zoom in where holds are close together."}
+            </Text>
+            <View style={styles.editRow}>
+              <NudgeButton label="←" disabled={!selected} onStep={nudgeStep(-1, 0)} onRelease={nudgeRelease} />
+              <NudgeButton label="↑" disabled={!selected} onStep={nudgeStep(0, -1)} onRelease={nudgeRelease} />
+              <NudgeButton label="↓" disabled={!selected} onStep={nudgeStep(0, 1)} onRelease={nudgeRelease} />
+              <NudgeButton label="→" disabled={!selected} onStep={nudgeStep(1, 0)} onRelease={nudgeRelease} />
+            </View>
+            <View style={styles.editRow}>
+              <Pressable
+                style={[styles.btn, !selected && styles.btnDisabled]}
+                onPress={deleteSelected}
+                disabled={!selected}
+              >
+                <Text style={[styles.btnText, { color: theme.danger }]}>Delete</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, styles.btnPrimary]} onPress={exitEdit}>
+                <Text style={[styles.btnText, styles.btnTextPrimary]}>Done</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.dim}>
+              Drag the pink crosshair, or hold an arrow to move it. Moved and added holds are kept when you re-detect.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner}>
+            <View style={styles.stats}>
+              <Stat label="Mapped" value={String(mapped.length)} />
+              <Stat label="No hold" value={String(cal.noHold.length)} />
+              <Stat label="Left" value={String(remaining)} />
+              <Stat label="Median" value={med === null ? "—" : `${(med / 1000).toFixed(2)}s`} />
+              <Stat label="Elapsed" value={clock(elapsed)} />
+              <Stat label="Projected" value={med === null ? "—" : clock(elapsed + med * remaining)} warn />
+            </View>
+
+            <View style={styles.row}>
+              <Text style={styles.dim}>Chain length</Text>
+              <CommitTextInput
+                style={styles.input}
+                keyboardType="number-pad"
+                initial={String(cal.chainLength)}
+                commitWhile="done"
+                onCommit={(text) => {
+                  const n = Number(text);
+                  if (Number.isInteger(n) && n > 0 && n <= 1000) {
+                    commit({ ...calRef.current, chainLength: n });
+                  }
+                }}
+              />
+            </View>
+
+            <View style={styles.btnRow}>
+              <Pressable
+                style={[styles.btn, cal.snapEnabled && styles.btnActive]}
+                onPress={() => commit({ ...calRef.current, snapEnabled: !calRef.current.snapEnabled })}
+              >
+                <Text style={styles.btnText}>Snap {cal.snapEnabled ? "on" : "off"}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.btn}
+                onPress={() => cal.photoUri && runDetection(cal.photoUri)}
+                disabled={!cal.photoUri || detecting}
+              >
+                <Text style={styles.btnText}>Re-detect</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={enterEdit} disabled={!cal.photoUri}>
+                <Text style={styles.btnText}>Edit holds · {cal.holds.length}</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.btnRow}>
+              <Pressable style={styles.btn} onPress={pickPhoto}>
+                <Text style={styles.btnText}>{cal.photoUri ? "Change photo" : "Load photo"}</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, styles.btnPrimary]} onPress={startSweep}>
+                <Text style={[styles.btnText, styles.btnTextPrimary]}>
+                  {decided > 0 ? "Resume sweep" : "Start sweep"}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.btnRow}>
+              <Pressable style={[styles.btn, mode === "verifying" && styles.btnActive]} onPress={toggleVerify}>
+                <Text style={styles.btnText}>Verify</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={exportJson}>
+                <Text style={styles.btnText}>Export</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={reset}>
+                <Text style={[styles.btnText, { color: theme.danger }]}>Reset</Text>
+              </Pressable>
+            </View>
+
+            {mode === "verifying" ? <Text style={styles.dim}>Tap a hold; the board lights that LED.</Text> : null}
+
+            <Text style={styles.dim}>
+              {cal.snapEnabled
+                ? "During a sweep, taps snap to the nearest free hold (blue dots) — tap anywhere on a hold. Fix missed or off-centre holds in Edit holds first."
+                : "Snap is off: during a sweep, markers land exactly where you tap."}
+            </Text>
+
+            {outliers.length > 0 ? (
+              <View style={styles.outliers}>
+                <Text style={styles.outlierTitle}>
+                  {outliers.length} likely mis-tap{outliers.length > 1 ? "s" : ""}
+                </Text>
+                <Text style={styles.dim}>
+                  Consecutive LEDs sit next to each other on the wall. These are far from both neighbours — tap one to
+                  light it and check.
+                </Text>
+                <View style={styles.outlierRow}>
+                  {outliers.slice(0, 12).map((o) => (
+                    <Pressable
+                      key={o.led}
+                      style={styles.outlierChip}
+                      onPress={() => {
+                        setHighlight(o.led);
+                        void board.lightOne(o.led, VERIFY_COLOUR);
+                      }}
+                    >
+                      <Text style={styles.outlierText}>{o.led}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
+      </LiftAboveKeyboard>
     </SafeAreaView>
   );
 }

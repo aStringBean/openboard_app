@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Stack } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
@@ -20,7 +21,11 @@ export function AccountScreen() {
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       <Stack.Screen options={{ title: "Account" }} />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={24}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+      >
         {!known ? (
           <ActivityIndicator color={theme.accent} />
         ) : session ? (
@@ -28,7 +33,7 @@ export function AccountScreen() {
         ) : (
           <SignIn />
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }
@@ -65,8 +70,8 @@ function SignIn() {
     <View style={styles.gap}>
       <Text style={styles.title}>Sign in</Text>
       <Text style={styles.dim}>
-        Needed to share a wall with friends and sync problems between phones. Everything you have set up so
-        far stays on this phone either way.
+        Needed to share a wall with friends and sync problems between phones. Everything you have set up so far stays on
+        this phone either way.
       </Text>
       <OtherAccountNote />
 
@@ -87,7 +92,11 @@ function SignIn() {
             onSubmitEditing={send}
             returnKeyType="send"
           />
-          <Pressable style={[styles.btn, styles.primary, (!email.includes("@") || busy) && styles.disabled]} onPress={send} disabled={!email.includes("@") || busy}>
+          <Pressable
+            style={[styles.btn, styles.primary, (!email.includes("@") || busy) && styles.disabled]}
+            onPress={send}
+            disabled={!email.includes("@") || busy}
+          >
             <Text style={styles.primaryText}>{busy ? "Sending…" : "Email me a code"}</Text>
           </Pressable>
         </>
@@ -107,14 +116,24 @@ function SignIn() {
             onSubmitEditing={verify}
             autoFocus
           />
-          <Pressable style={[styles.btn, styles.primary, (code.length !== 6 || busy) && styles.disabled]} onPress={verify} disabled={code.length !== 6 || busy}>
+          <Pressable
+            style={[styles.btn, styles.primary, (code.length !== 6 || busy) && styles.disabled]}
+            onPress={verify}
+            disabled={code.length !== 6 || busy}
+          >
             <Text style={styles.primaryText}>{busy ? "Checking…" : "Sign in"}</Text>
           </Pressable>
           <View style={styles.row}>
             <Pressable hitSlop={8} onPress={send} disabled={busy}>
               <Text style={styles.link}>Send a new code</Text>
             </Pressable>
-            <Pressable hitSlop={8} onPress={() => { setSentTo(null); setError(null); }}>
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                setSentTo(null);
+                setError(null);
+              }}
+            >
               <Text style={styles.link}>Use a different email</Text>
             </Pressable>
           </View>
@@ -132,8 +151,8 @@ function OtherAccountNote() {
   if (!sharedWallsOf) return null;
   return (
     <Text style={styles.warn}>
-      This phone has shared walls for {sharedWallsOf}. Signing in with a different account takes them off this
-      phone; they stay on the server, and come back when {sharedWallsOf} signs in here again.
+      This phone has shared walls for {sharedWallsOf}. Signing in with a different account takes them off this phone;
+      they stay on the server, and come back when {sharedWallsOf} signs in here again.
     </Text>
   );
 }

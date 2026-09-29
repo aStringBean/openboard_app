@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { useApp } from "../state/AppProvider";
 import type { Wall } from "../lib/wall";
@@ -72,7 +73,11 @@ export function WallsScreen() {
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       <Stack.Screen options={{ title: "Walls" }} />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={24}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+      >
         {walls.map((w) => (
           <Pressable
             key={w.id}
@@ -127,7 +132,7 @@ export function WallsScreen() {
             <Text style={styles.btnText}>Add</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
+import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
 import { AnglePicker, GradePicker, RolePalette } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas } from "../components/WallCanvas";
@@ -84,8 +76,10 @@ export function ProblemEditorScreen() {
 
   const roles = useMemo(() => new Map(holds.map((h) => [h.holdId, h.role])), [holds]);
   const counts = useMemo(() => countRoles(holds), [holds]);
-  const unlit = useMemo(() => (cal ? problemFrame(holds, cal.holds, wall.roleColors).unlit : 0), [holds, cal, wall.roleColors]);
-
+  const unlit = useMemo(
+    () => (cal ? problemFrame(holds, cal.holds, wall.roleColors).unlit : 0),
+    [holds, cal, wall.roleColors],
+  );
 
   const onTap = useCallback(
     (x: number, y: number, zoom: number) => {
@@ -163,85 +157,88 @@ export function ProblemEditorScreen() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
-      <Stack.Screen options={{ title: original ? "Edit problem" : "New problem" }} />
+      {/* The panel sits where the keyboard comes up: lift the screen, and the photo gives way. */}
+      <LiftAboveKeyboard>
+        <Stack.Screen options={{ title: original ? "Edit problem" : "New problem" }} />
 
-      <View style={styles.canvas} onLayout={onCanvasLayout}>
-        {cal.photoUri && canvasWidth > 0 ? (
-          <WallCanvas
-            photoUri={cal.photoUri}
-            width={canvasWidth}
-            height={canvasHeight}
-            holds={cal.holds}
-            problemRoles={roles}
-            roleColors={wall.roleColors}
-            showUnused
-            onTap={onTap}
-          />
-        ) : null}
-      </View>
-
-      <View style={styles.paletteBar}>
-        <RolePalette
-          colors={wall.roleColors}
-          active={role}
-          counts={counts}
-          onSelect={(r) => {
-            setRole(r);
-            setRefused(null);
-          }}
-        />
-        {refused ? <Text style={styles.refused}>{refused}</Text> : null}
-        <Text style={styles.hint}>
-          Tap a hold to make it {role === "no_match" ? "a no-match hand" : `a ${role}`} hold; tap it again to
-          remove it.
-          {conn.status === "connected" ? " The wall shows it as you go." : " Connect to see it on the wall."}
-        </Text>
-      </View>
-
-      <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner} keyboardShouldPersistTaps="handled">
-        <TextInput
-          style={styles.input}
-          placeholder="Name"
-          placeholderTextColor={theme.dim}
-          value={name}
-          onChangeText={(t) => {
-            setName(t);
-            setIssues([]);
-          }}
-          maxLength={60}
-        />
-
-        <Text style={styles.label}>Grade</Text>
-        <GradePicker value={grade} scale={gradeScale} onChange={setGrade} />
-
-        {wall.angleMode === "adjustable" ? (
-          <>
-            <Text style={styles.label}>Set at</Text>
-            <AnglePicker angles={wall.angles} value={angle} onChange={setAngle} />
-          </>
-        ) : null}
-
-        {unlit > 0 ? (
-          <Text style={styles.note}>
-            {unlit} hold{unlit > 1 ? "s have" : " has"} no LED beside it, so won&apos;t light on the wall.
-          </Text>
-        ) : null}
-
-        {issues.map((i) => (
-          <Text key={i} style={styles.issue}>
-            {i}
-          </Text>
-        ))}
-
-        <View style={styles.actions}>
-          <Pressable style={styles.btn} onPress={() => router.back()}>
-            <Text style={styles.btnText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={[styles.btn, styles.primary]} onPress={save} disabled={saving}>
-            <Text style={styles.primaryText}>{saving ? "Saving…" : "Save"}</Text>
-          </Pressable>
+        <View style={styles.canvas} onLayout={onCanvasLayout}>
+          {cal.photoUri && canvasWidth > 0 ? (
+            <WallCanvas
+              photoUri={cal.photoUri}
+              width={canvasWidth}
+              height={canvasHeight}
+              holds={cal.holds}
+              problemRoles={roles}
+              roleColors={wall.roleColors}
+              showUnused
+              onTap={onTap}
+            />
+          ) : null}
         </View>
-      </ScrollView>
+
+        <View style={styles.paletteBar}>
+          <RolePalette
+            colors={wall.roleColors}
+            active={role}
+            counts={counts}
+            onSelect={(r) => {
+              setRole(r);
+              setRefused(null);
+            }}
+          />
+          {refused ? <Text style={styles.refused}>{refused}</Text> : null}
+          <Text style={styles.hint}>
+            Tap a hold to make it {role === "no_match" ? "a no-match hand" : `a ${role}`} hold; tap it again to remove
+            it.
+            {conn.status === "connected" ? " The wall shows it as you go." : " Connect to see it on the wall."}
+          </Text>
+        </View>
+
+        <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner} keyboardShouldPersistTaps="handled">
+          <TextInput
+            style={styles.input}
+            placeholder="Name"
+            placeholderTextColor={theme.dim}
+            value={name}
+            onChangeText={(t) => {
+              setName(t);
+              setIssues([]);
+            }}
+            maxLength={60}
+          />
+
+          <Text style={styles.label}>Grade</Text>
+          <GradePicker value={grade} scale={gradeScale} onChange={setGrade} />
+
+          {wall.angleMode === "adjustable" ? (
+            <>
+              <Text style={styles.label}>Set at</Text>
+              <AnglePicker angles={wall.angles} value={angle} onChange={setAngle} />
+            </>
+          ) : null}
+
+          {unlit > 0 ? (
+            <Text style={styles.note}>
+              {unlit} hold{unlit > 1 ? "s have" : " has"} no LED beside it, so won&apos;t light on the wall.
+            </Text>
+          ) : null}
+
+          {issues.map((i) => (
+            <Text key={i} style={styles.issue}>
+              {i}
+            </Text>
+          ))}
+
+          <View style={styles.actions}>
+            <Pressable style={styles.btn} onPress={() => router.back()}>
+              <Text style={styles.btnText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={[styles.btn, styles.primary]} onPress={save} disabled={saving}>
+              <Text style={styles.primaryText}>{saving ? "Saving…" : "Save"}</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </LiftAboveKeyboard>
     </SafeAreaView>
   );
 }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
+import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
 import { starsText } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas } from "../components/WallCanvas";
@@ -44,6 +45,15 @@ export function ProblemViewScreen() {
   const [comments, setComments] = useState<CommentView[]>([]);
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState("");
+  const panelRef = useRef<ScrollView>(null);
+  /* Where the comment box sits in the panel, and whether it is being typed in:
+   * while it is, the panel keeps it in view as the keyboard shrinks the panel. */
+  const commentY = useRef(0);
+  const commenting = useRef(false);
+  const showComment = useCallback(
+    () => panelRef.current?.scrollTo({ y: Math.max(0, commentY.current - 48), animated: true }),
+    [],
+  );
   const { onLayout: onCanvasLayout, width: canvasWidth, height: canvasHeight } = useFitCanvas(cal?.photoAspect);
 
   const reload = useCallback(() => {
@@ -201,170 +211,188 @@ export function ProblemViewScreen() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
-      <Stack.Screen options={{ title: problem.name }} />
+      {/* The panel sits where the keyboard comes up: lift the screen, and the photo gives way. */}
+      <LiftAboveKeyboard>
+        <Stack.Screen options={{ title: problem.name }} />
 
-      <View style={styles.canvas} onLayout={onCanvasLayout}>
-        {cal.photoUri && canvasWidth > 0 ? (
-          <WallCanvas
-            photoUri={cal.photoUri}
-            width={canvasWidth}
-            height={canvasHeight}
-            holds={cal.holds}
-            problemRoles={roles}
-            roleColors={wall.roleColors}
-            onTap={() => {}}
-            onSwipe={go}
-          />
-        ) : null}
-      </View>
-
-      <GestureDetector gesture={panelSwipe}>
-        <ScrollView style={styles.panel} contentContainerStyle={styles.panelInner}>
-          {around ? (
-            <View style={styles.browse}>
-              <Pressable hitSlop={10} disabled={!around.prev} onPress={() => go(-1)}>
-                <Text style={[styles.arrow, !around.prev && styles.arrowOff]}>‹</Text>
-              </Pressable>
-              <Text style={styles.dim}>
-                {around.position} of {around.count}
-              </Text>
-              <Pressable hitSlop={10} disabled={!around.next} onPress={() => go(1)}>
-                <Text style={[styles.arrow, !around.next && styles.arrowOff]}>›</Text>
-              </Pressable>
-            </View>
+        <View style={styles.canvas} onLayout={onCanvasLayout}>
+          {cal.photoUri && canvasWidth > 0 ? (
+            <WallCanvas
+              photoUri={cal.photoUri}
+              width={canvasWidth}
+              height={canvasHeight}
+              holds={cal.holds}
+              problemRoles={roles}
+              roleColors={wall.roleColors}
+              onTap={() => {}}
+              onSwipe={go}
+            />
           ) : null}
-          <View style={styles.titleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={2}>
-                {problem.name}
-              </Text>
-              {stars !== null ? <Text style={styles.stars}>{starsText(stars)}</Text> : null}
-              {wall.cloud ? <Text style={styles.dim}>Set by {nameOf(problem.setterId)}</Text> : null}
+        </View>
+
+        <GestureDetector gesture={panelSwipe}>
+          <ScrollView
+            ref={panelRef}
+            style={styles.panel}
+            contentContainerStyle={styles.panelInner}
+            onLayout={() => commenting.current && showComment()}
+          >
+            {around ? (
+              <View style={styles.browse}>
+                <Pressable hitSlop={10} disabled={!around.prev} onPress={() => go(-1)}>
+                  <Text style={[styles.arrow, !around.prev && styles.arrowOff]}>‹</Text>
+                </Pressable>
+                <Text style={styles.dim}>
+                  {around.position} of {around.count}
+                </Text>
+                <Pressable hitSlop={10} disabled={!around.next} onPress={() => go(1)}>
+                  <Text style={[styles.arrow, !around.next && styles.arrowOff]}>›</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.titleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name} numberOfLines={2}>
+                  {problem.name}
+                </Text>
+                {stars !== null ? <Text style={styles.stars}>{starsText(stars)}</Text> : null}
+                {wall.cloud ? <Text style={styles.dim}>Set by {nameOf(problem.setterId)}</Text> : null}
+              </View>
+              <View style={styles.gradeBox}>
+                <Text style={styles.grade}>{gradeLabel(consensus, gradeScale)}</Text>
+                {consensus !== problem.grade ? (
+                  <Text style={styles.dim}>set as {gradeLabel(problem.grade, gradeScale)}</Text>
+                ) : null}
+              </View>
             </View>
-            <View style={styles.gradeBox}>
-              <Text style={styles.grade}>{gradeLabel(consensus, gradeScale)}</Text>
-              {consensus !== problem.grade ? (
-                <Text style={styles.dim}>set as {gradeLabel(problem.grade, gradeScale)}</Text>
+
+            <View style={styles.legend}>
+              {ROLES.filter((r) => counts[r] > 0).map((r) => (
+                <View key={r} style={styles.legendItem}>
+                  <View style={[styles.swatch, { backgroundColor: roleUi(r, wall.roleColors) }]} />
+                  <Text style={styles.dim}>
+                    {counts[r]} {ROLE_STYLE[r].label.toLowerCase()}
+                  </Text>
+                </View>
+              ))}
+              {adjustable ? <Text style={styles.dim}>· set at {problem.angle}°</Text> : null}
+            </View>
+
+            {adjustable && problem.angle !== wall.currentAngle ? (
+              <Text style={styles.note}>
+                Set at {problem.angle}°; the wall is at {wall.currentAngle}°, so it will climb differently.
+              </Text>
+            ) : null}
+            {frame && frame.unlit > 0 ? (
+              <Text style={styles.note}>
+                {frame.unlit} hold{frame.unlit > 1 ? "s have" : " has"} no LED, so won&apos;t light.
+              </Text>
+            ) : null}
+
+            <View style={styles.actions}>
+              <Pressable
+                style={[styles.btn, styles.primary]}
+                onPress={() => router.push(`/problem/tick?id=${problem.id}`)}
+              >
+                <Text style={styles.primaryText}>Tick</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, !connected && styles.disabled]} onPress={light} disabled={!connected}>
+                <Text style={styles.btnText}>{connected ? "Light it" : "Not connected"}</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.section}>
+              {ticks.length === 0
+                ? "Not climbed yet"
+                : `${ticks.length} ascent${ticks.length > 1 ? "s" : ""}${
+                    mine.length && isFlash(mine[mine.length - 1]!)
+                      ? " · you flashed it"
+                      : mine.length
+                        ? " · ticked"
+                        : ""
+                  }`}
+            </Text>
+
+            {adjustable && angles.length > 1
+              ? angles.map((a) => (
+                  <Text key={a.angle} style={styles.dim}>
+                    {a.angle}°: {a.ascents} ascent{a.ascents === 1 ? "" : "s"}
+                    {a.grade !== null ? ` · ${gradeLabel(a.grade, gradeScale)}` : ""}
+                  </Text>
+                ))
+              : null}
+
+            {ticks.map((t) => (
+              <Pressable key={t.id} style={styles.tick} onLongPress={() => removeTick(t)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tickMain}>
+                    {wall.cloud ? `${nameOf(t.userId)} · ` : ""}
+                    {shortDate(t.climbedAt)} · {isFlash(t) ? "one go" : `${t.attempts} goes`}
+                    {adjustable ? ` · ${t.angle}°` : ""}
+                  </Text>
+                  {t.comment ? <Text style={styles.dim}>{t.comment}</Text> : null}
+                </View>
+                <Text style={styles.tickGrade}>
+                  {t.grade !== null ? gradeLabel(t.grade, gradeScale) : ""} {starsText(t.stars)}
+                </Text>
+              </Pressable>
+            ))}
+            {mine.length ? <Text style={styles.hint}>Long-press one of your ascents to delete it.</Text> : null}
+
+            <Text style={styles.section}>Comments</Text>
+            {comments.map((c) => (
+              <Pressable key={c.id} style={styles.comment} onLongPress={() => removeComment(c)}>
+                <Text style={styles.commentHead}>
+                  {nameOf(c.userId)} · {shortDate(c.createdAt)}
+                </Text>
+                <Text style={styles.commentBody}>{c.body}</Text>
+              </Pressable>
+            ))}
+            <View style={styles.commentBar} onLayout={(e) => (commentY.current = e.nativeEvent.layout.y)}>
+              <TextInput
+                style={styles.commentInput}
+                /* The comment box is near the panel's end: keep it in view while typing. */
+                onFocus={() => {
+                  commenting.current = true;
+                  showComment();
+                }}
+                onBlur={() => (commenting.current = false)}
+                placeholder={comments.length ? "Add a comment" : "Beta, conditions, a kind word…"}
+                placeholderTextColor={theme.dim}
+                value={draft}
+                onChangeText={setDraft}
+                maxLength={1000}
+                multiline
+              />
+              <Pressable
+                style={[styles.postBtn, !draft.trim() && styles.disabled]}
+                onPress={post}
+                disabled={!draft.trim()}
+              >
+                <Text style={styles.primaryText}>Post</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.actions}>
+              <Pressable style={styles.btn} onPress={() => router.push(`/problem/lists?id=${problem.id}`)}>
+                <Text style={styles.btnText}>Lists</Text>
+              </Pressable>
+              {editable ? (
+                <Pressable style={styles.btn} onPress={() => router.push(`/problem/edit?id=${problem.id}`)}>
+                  <Text style={styles.btnText}>Edit</Text>
+                </Pressable>
+              ) : null}
+              {editable ? (
+                <Pressable style={styles.btn} onPress={remove}>
+                  <Text style={[styles.btnText, { color: theme.danger }]}>
+                    {isMine(problem.setterId) ? "Delete" : "Take down"}
+                  </Text>
+                </Pressable>
               ) : null}
             </View>
-          </View>
-
-          <View style={styles.legend}>
-            {ROLES.filter((r) => counts[r] > 0).map((r) => (
-              <View key={r} style={styles.legendItem}>
-                <View style={[styles.swatch, { backgroundColor: roleUi(r, wall.roleColors) }]} />
-                <Text style={styles.dim}>
-                  {counts[r]} {ROLE_STYLE[r].label.toLowerCase()}
-                </Text>
-              </View>
-            ))}
-            {adjustable ? <Text style={styles.dim}>· set at {problem.angle}°</Text> : null}
-          </View>
-
-          {adjustable && problem.angle !== wall.currentAngle ? (
-            <Text style={styles.note}>
-              Set at {problem.angle}°; the wall is at {wall.currentAngle}°, so it will climb differently.
-            </Text>
-          ) : null}
-          {frame && frame.unlit > 0 ? (
-            <Text style={styles.note}>
-              {frame.unlit} hold{frame.unlit > 1 ? "s have" : " has"} no LED, so won&apos;t light.
-            </Text>
-          ) : null}
-
-          <View style={styles.actions}>
-            <Pressable
-              style={[styles.btn, styles.primary]}
-              onPress={() => router.push(`/problem/tick?id=${problem.id}`)}
-            >
-              <Text style={styles.primaryText}>Tick</Text>
-            </Pressable>
-            <Pressable style={[styles.btn, !connected && styles.disabled]} onPress={light} disabled={!connected}>
-              <Text style={styles.btnText}>{connected ? "Light it" : "Not connected"}</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.section}>
-            {ticks.length === 0
-              ? "Not climbed yet"
-              : `${ticks.length} ascent${ticks.length > 1 ? "s" : ""}${
-                  mine.length && isFlash(mine[mine.length - 1]!) ? " · you flashed it" : mine.length ? " · ticked" : ""
-                }`}
-          </Text>
-
-          {adjustable && angles.length > 1
-            ? angles.map((a) => (
-                <Text key={a.angle} style={styles.dim}>
-                  {a.angle}°: {a.ascents} ascent{a.ascents === 1 ? "" : "s"}
-                  {a.grade !== null ? ` · ${gradeLabel(a.grade, gradeScale)}` : ""}
-                </Text>
-              ))
-            : null}
-
-          {ticks.map((t) => (
-            <Pressable key={t.id} style={styles.tick} onLongPress={() => removeTick(t)}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.tickMain}>
-                  {wall.cloud ? `${nameOf(t.userId)} · ` : ""}
-                  {shortDate(t.climbedAt)} · {isFlash(t) ? "one go" : `${t.attempts} goes`}
-                  {adjustable ? ` · ${t.angle}°` : ""}
-                </Text>
-                {t.comment ? <Text style={styles.dim}>{t.comment}</Text> : null}
-              </View>
-              <Text style={styles.tickGrade}>
-                {t.grade !== null ? gradeLabel(t.grade, gradeScale) : ""} {starsText(t.stars)}
-              </Text>
-            </Pressable>
-          ))}
-          {mine.length ? <Text style={styles.hint}>Long-press one of your ascents to delete it.</Text> : null}
-
-          <Text style={styles.section}>Comments</Text>
-          {comments.map((c) => (
-            <Pressable key={c.id} style={styles.comment} onLongPress={() => removeComment(c)}>
-              <Text style={styles.commentHead}>
-                {nameOf(c.userId)} · {shortDate(c.createdAt)}
-              </Text>
-              <Text style={styles.commentBody}>{c.body}</Text>
-            </Pressable>
-          ))}
-          <View style={styles.commentBar}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder={comments.length ? "Add a comment" : "Beta, conditions, a kind word…"}
-              placeholderTextColor={theme.dim}
-              value={draft}
-              onChangeText={setDraft}
-              maxLength={1000}
-              multiline
-            />
-            <Pressable
-              style={[styles.postBtn, !draft.trim() && styles.disabled]}
-              onPress={post}
-              disabled={!draft.trim()}
-            >
-              <Text style={styles.primaryText}>Post</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.actions}>
-            <Pressable style={styles.btn} onPress={() => router.push(`/problem/lists?id=${problem.id}`)}>
-              <Text style={styles.btnText}>Lists</Text>
-            </Pressable>
-            {editable ? (
-              <Pressable style={styles.btn} onPress={() => router.push(`/problem/edit?id=${problem.id}`)}>
-                <Text style={styles.btnText}>Edit</Text>
-              </Pressable>
-            ) : null}
-            {editable ? (
-              <Pressable style={styles.btn} onPress={remove}>
-                <Text style={[styles.btnText, { color: theme.danger }]}>
-                  {isMine(problem.setterId) ? "Delete" : "Take down"}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </ScrollView>
-      </GestureDetector>
+          </ScrollView>
+        </GestureDetector>
+      </LiftAboveKeyboard>
     </SafeAreaView>
   );
 }
