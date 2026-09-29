@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
+import { Segmented } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas, type WallCanvasHandle } from "../components/WallCanvas";
 import { CommitTextInput } from "../components/CommitTextInput";
@@ -25,6 +26,10 @@ import * as board from "../lib/board";
 import {
   addHold,
   assignLed,
+  clearHolds,
+  DETECT_SETTING,
+  DOT_COLORS,
+  DOT_OPACITIES,
   decidedCount,
   deleteHold,
   emptyCalibration,
@@ -43,7 +48,7 @@ import {
 } from "../lib/calibration";
 import { detectHoldsInPhoto } from "../lib/detectPhoto";
 import { findOutliers } from "../lib/outliers";
-import { loadCalibration, problemsUsingHold, saveCalibration, usedHoldIds } from "../lib/db/repo";
+import { loadCalibration, problemsUsingHold, saveCalibration, usedHoldIds, getSetting } from "../lib/db/repo";
 import { keepPhoto } from "../lib/photos";
 import { useApp } from "../state/AppProvider";
 import { CALIBRATION_COLOUR, theme, VERIFY_COLOUR } from "../theme";
@@ -76,6 +81,10 @@ export function CalibrationScreen() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { onLayout: onCanvasLayout, width: canvasWidth, height: canvasHeight } = useFitCanvas(cal?.photoAspect);
   const [detecting, setDetecting] = useState(false);
+  /* Hold detection is experimental, off unless switched on in Settings: on
+   * some walls it scatters dots everywhere. */
+  const [detectOn, setDetectOn] = useState(false);
+  const [dotsOpen, setDotsOpen] = useState(false);
   const [, forceTick] = useState(0);
 
   /*
@@ -134,9 +143,12 @@ export function CalibrationScreen() {
     useCallback(() => {
       let live = true;
       saving.current
-        .then(() => Promise.all([loadCalibration(db, wall.id), usedHoldIds(db, wall.id)]))
-        .then(([c, u]) => {
+        .then(() =>
+          Promise.all([loadCalibration(db, wall.id), usedHoldIds(db, wall.id), getSetting(db, DETECT_SETTING)]),
+        )
+        .then(([c, u, detect]) => {
           if (!live) return;
+          setDetectOn(detect === "1");
           calRef.current = c;
           setCal(c);
           setUsed(u);
@@ -403,7 +415,28 @@ export function CalibrationScreen() {
     });
     setSelectedId(null);
 
-    await runDetection(photoUri);
+    if (detectOn) await runDetection(photoUri);
+  };
+
+  const clearAll = () => {
+    const keep = usedRef.current.size;
+    Alert.alert(
+      "Clear all holds?",
+      keep > 0
+        ? `Removes every hold and its LED, except the ${keep} your problems use, which stay as they are.`
+        : "Removes every hold from the photo, and its LED. The photo stays.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            commit(clearHolds(calRef.current, usedRef.current));
+            setSelectedId(null);
+          },
+        },
+      ],
+    );
   };
 
   const exportJson = async () => {
@@ -478,6 +511,8 @@ export function CalibrationScreen() {
               editing={mode === "editing"}
               onTap={onTap}
               onMoveSelected={onMoveSelected}
+              dotColor={cal.dotColor}
+              dotOpacity={cal.dotOpacity}
               ref={canvasRef}
             />
           ) : (
@@ -538,8 +573,41 @@ export function CalibrationScreen() {
                 <Text style={[styles.btnText, styles.btnTextPrimary]}>Done</Text>
               </Pressable>
             </View>
+            <View style={styles.editRow}>
+              <Pressable style={[styles.btn, dotsOpen && styles.btnActive]} onPress={() => setDotsOpen(!dotsOpen)}>
+                <Text style={styles.btnText}>Dots</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.btn, !cal.holds.length && styles.btnDisabled]}
+                onPress={clearAll}
+                disabled={!cal.holds.length}
+              >
+                <Text style={[styles.btnText, { color: theme.danger }]}>Clear all</Text>
+              </Pressable>
+            </View>
+            {dotsOpen ? (
+              <View style={styles.dots}>
+                <View style={styles.swatches}>
+                  {DOT_COLORS.map((d) => (
+                    <Pressable
+                      key={d.color}
+                      accessibilityLabel={d.name}
+                      hitSlop={4}
+                      onPress={() => commit({ ...calRef.current, dotColor: d.color })}
+                      style={[styles.swatch, { backgroundColor: d.color }, cal.dotColor === d.color && styles.swatchOn]}
+                    />
+                  ))}
+                </View>
+                <Segmented<number>
+                  options={DOT_OPACITIES.map((o) => ({ value: o, label: `${Math.round(o * 100)}%` }))}
+                  value={cal.dotOpacity}
+                  onChange={(o) => commit({ ...calRef.current, dotOpacity: o })}
+                />
+              </View>
+            ) : null}
             <Text style={styles.dim}>
-              Drag the pink crosshair, or hold an arrow to move it. Moved and added holds are kept when you re-detect.
+              Drag the pink crosshair, or hold an arrow to move it.
+              {detectOn ? " Moved and added holds are kept when you re-detect." : ""}
             </Text>
           </View>
         ) : (
@@ -576,13 +644,15 @@ export function CalibrationScreen() {
               >
                 <Text style={styles.btnText}>Snap {cal.snapEnabled ? "on" : "off"}</Text>
               </Pressable>
-              <Pressable
-                style={styles.btn}
-                onPress={() => cal.photoUri && runDetection(cal.photoUri)}
-                disabled={!cal.photoUri || detecting}
-              >
-                <Text style={styles.btnText}>Re-detect</Text>
-              </Pressable>
+              {detectOn ? (
+                <Pressable
+                  style={styles.btn}
+                  onPress={() => cal.photoUri && runDetection(cal.photoUri)}
+                  disabled={!cal.photoUri || detecting}
+                >
+                  <Text style={styles.btnText}>Re-detect</Text>
+                </Pressable>
+              ) : null}
               <Pressable style={styles.btn} onPress={enterEdit} disabled={!cal.photoUri}>
                 <Text style={styles.btnText}>Edit holds · {cal.holds.length}</Text>
               </Pressable>
@@ -615,7 +685,7 @@ export function CalibrationScreen() {
 
             <Text style={styles.dim}>
               {cal.snapEnabled
-                ? "During a sweep, taps snap to the nearest free hold (blue dots) — tap anywhere on a hold. Fix missed or off-centre holds in Edit holds first."
+                ? "During a sweep, taps snap to the nearest free hold — tap anywhere on a hold. Fix missed or off-centre holds in Edit holds first."
                 : "Snap is off: during a sweep, markers land exactly where you tap."}
             </Text>
 
@@ -726,6 +796,10 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
 }
 
 const styles = StyleSheet.create({
+  dots: { gap: 10, paddingTop: 4 },
+  swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "center" },
+  swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: theme.line },
+  swatchOn: { borderColor: theme.text, transform: [{ scale: 1.15 }] },
   root: { flex: 1, backgroundColor: theme.bg },
   centre: { flex: 1, alignItems: "center", justifyContent: "center" },
   canvas: { flex: 1, overflow: "hidden", justifyContent: "center", alignItems: "center" },

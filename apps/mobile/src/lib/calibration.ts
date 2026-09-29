@@ -57,7 +57,32 @@ export interface Calibration {
   taps: number[];
   nextLed: number;
   elapsedMs: number;
+  /**
+   * How holds without an LED are drawn while setting the wall up. Kept per
+   * wall, since what stands out depends on the photo: yellow is lost on a
+   * yellow board.
+   */
+  dotColor: string;
+  /** 0.2-1 */
+  dotOpacity: number;
 }
+
+/** The app setting (Settings, Experimental) that turns on hold detection. */
+export const DETECT_SETTING = "experimentalDetectHolds";
+
+/** Dot colours to choose from, and the default: yellow, fully opaque, which
+ * with its dark outline stands out on most walls. */
+export const DOT_COLORS: readonly { name: string; color: string }[] = [
+  { name: "Yellow", color: "#ffe600" },
+  { name: "White", color: "#ffffff" },
+  { name: "Black", color: "#000000" },
+  { name: "Cyan", color: "#00e5ff" },
+  { name: "Lime", color: "#7cff00" },
+  { name: "Orange", color: "#ff8a00" },
+  { name: "Red", color: "#ff2d2d" },
+  { name: "Blue", color: "#2d6bff" },
+];
+export const DOT_OPACITIES = [0.4, 0.6, 0.8, 1] as const;
 
 export const emptyCalibration = (chainLength = 250): Calibration => ({
   version: 2,
@@ -71,6 +96,8 @@ export const emptyCalibration = (chainLength = 250): Calibration => ({
   taps: [],
   nextLed: 0,
   elapsedMs: 0,
+  dotColor: DOT_COLORS[0]!.color,
+  dotOpacity: 1,
 });
 
 /**
@@ -304,6 +331,17 @@ export function mergeDetections(
 }
 
 /**
+ * Clears the photo of holds, to start again after a detection that scattered
+ * dots everywhere. Holds problems use stay, LEDs and all; every other hold,
+ * and its LED mapping, goes. The sweep goes back to the first LED left
+ * without a decision, since a sweep never looks behind where it is.
+ */
+export function clearHolds(c: Calibration, keep: Protected = NONE): Calibration {
+  const cleared = { ...c, holds: c.holds.filter((h) => keep.has(h.id)) };
+  return { ...cleared, nextLed: nextUndecided(cleared, 0) };
+}
+
+/**
  * Starts calibration over: every LED mapping, no-hold decision and timing is
  * cleared, as are holds nobody depends on. Holds used by problems stay, now
  * unmapped, so their problems still point at something.
@@ -314,6 +352,8 @@ export function resetCalibration(c: Calibration, keep: Protected = NONE): Calibr
     photoUri: c.photoUri,
     photoAspect: c.photoAspect,
     snapEnabled: c.snapEnabled,
+    dotColor: c.dotColor,
+    dotOpacity: c.dotOpacity,
     holds: c.holds.filter((h) => keep.has(h.id)).map((h) => ({ ...unmapped(h), source: "manual" as const })),
     /* Ids are never reused, even across a reset. */
     nextHoldId: c.nextHoldId,

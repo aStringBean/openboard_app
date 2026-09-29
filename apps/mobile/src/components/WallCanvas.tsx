@@ -27,6 +27,9 @@ interface Props {
   problemRoles?: ReadonlyMap<number, Role>;
   /** The wall's own role colours; defaults for the rest. */
   roleColors?: RoleColors;
+  /** How to draw holds without an LED while setting up: colour and opacity. */
+  dotColor?: string;
+  dotOpacity?: number;
   /** In problem mode, also draw the holds not in the problem, faintly, as targets. */
   showUnused?: boolean;
   selectedId?: number | null;
@@ -85,6 +88,8 @@ export function WallCanvas({
   highlightLed,
   problemRoles,
   roleColors,
+  dotColor = "#ffe600",
+  dotOpacity = 1,
   showUnused = false,
   selectedId = null,
   editing = false,
@@ -275,6 +280,9 @@ export function WallCanvas({
    * highlight or the selection change — not on every parent render. */
   const markers = useMemo(() => {
     const dot = DOT / zoom;
+    const setupDot = SETUP_DOT / zoom;
+    const dotFill = withAlpha(dotColor, dotOpacity);
+    const dotEdge = withAlpha(isLight(dotColor) ? "#000000" : "#ffffff", Math.min(1, dotOpacity + 0.2));
     const ring = SIZE / zoom;
     const border = 1.5 / zoom;
 
@@ -340,18 +348,21 @@ export function WallCanvas({
           <View
             key={h.id}
             pointerEvents="none"
-            style={[
-              styles.dot,
-              {
-                left: h.x * width,
-                top: h.y * height,
-                width: dot,
-                height: dot,
-                marginLeft: -dot / 2,
-                marginTop: -dot / 2,
-                borderRadius: dot / 2,
-              },
-            ]}
+            style={{
+              position: "absolute",
+              left: h.x * width,
+              top: h.y * height,
+              width: setupDot,
+              height: setupDot,
+              marginLeft: -setupDot / 2,
+              marginTop: -setupDot / 2,
+              borderRadius: setupDot / 2,
+              backgroundColor: dotFill,
+              /* An outline in whichever of black or white the dot is not,
+               * so it stands out on light holds and dark walls alike. */
+              borderWidth: 1.5 / zoom,
+              borderColor: dotEdge,
+            }}
           />
         );
       }
@@ -382,7 +393,7 @@ export function WallCanvas({
         </View>
       );
     });
-  }, [holds, zoom, highlightLed, selectedId, problemRoles, roleColors, showUnused, width, height]);
+  }, [holds, zoom, highlightLed, selectedId, problemRoles, roleColors, dotColor, dotOpacity, showUnused, width, height]);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -406,16 +417,30 @@ export function WallCanvas({
 
 const SIZE = 14;
 const DOT = 6;
+/** A hold waiting for its LED: bigger than a problem's faint dots, since it
+ * is the thing being worked on. */
+const SETUP_DOT = 9;
+
+/** "#rrggbb" at an opacity, as "#rrggbbaa". */
+const withAlpha = (hex: string, a: number) =>
+  `${hex.slice(0, 7)}${Math.round(Math.max(0, Math.min(1, a)) * 255)
+    .toString(16)
+    .padStart(2, "0")}`;
+
+/** Whether a colour is light enough to want a dark outline. */
+function isLight(hex: string): boolean {
+  const n = parseInt(hex.slice(1, 7), 16);
+  const r = (n >> 16) & 255,
+    g = (n >> 8) & 255,
+    b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 140;
+}
 /** The crosshair: a ring with ticks outside it, so nothing covers the centre. */
 const CROSS = 26;
 const TICK = 7;
 const SELECT = "#ff3df0";
 
 const styles = StyleSheet.create({
-  dot: {
-    position: "absolute",
-    backgroundColor: "rgba(91,157,255,0.6)",
-  },
   unused: {
     position: "absolute",
     backgroundColor: "rgba(255,255,255,0.45)",

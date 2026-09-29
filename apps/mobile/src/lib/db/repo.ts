@@ -25,7 +25,7 @@ interface WallRow {
 /** Sweep bookkeeping. It is only ever read and written whole, so it is JSON. */
 type CalibrationState = Pick<
   Calibration,
-  "chainLength" | "nextHoldId" | "noHold" | "snapEnabled" | "taps" | "nextLed" | "elapsedMs"
+  "chainLength" | "nextHoldId" | "noHold" | "snapEnabled" | "taps" | "nextLed" | "elapsedMs" | "dotColor" | "dotOpacity"
 >;
 
 const stateOf = (c: Calibration): CalibrationState => ({
@@ -36,6 +36,8 @@ const stateOf = (c: Calibration): CalibrationState => ({
   taps: c.taps,
   nextLed: c.nextLed,
   elapsedMs: c.elapsedMs,
+  dotColor: c.dotColor,
+  dotOpacity: c.dotOpacity,
 });
 
 const wallOf = (r: WallRow): Wall => ({

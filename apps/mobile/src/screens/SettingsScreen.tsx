@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, Switch } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -9,6 +9,8 @@ import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
 import * as board from "../lib/board";
+import { getSetting, setSetting } from "../lib/db/repo";
+import { DETECT_SETTING } from "../lib/calibration";
 import { familyOf } from "../lib/boardName";
 import { gradeLabel, type GradeScale } from "../lib/grades";
 import {
@@ -90,6 +92,8 @@ export function SettingsScreen() {
 
         <BoardSettings />
 
+        <Experimental />
+
         <Text style={styles.section}>Grades</Text>
         <Segmented<GradeScale>
           options={[
@@ -136,7 +140,7 @@ function WallSettings() {
     <>
       <Pressable style={styles.link} onPress={() => router.push("/setup")}>
         <Text style={styles.linkTitle}>Wall setup</Text>
-        <Text style={styles.dim}>Photo, hold detection, mapping LEDs to holds</Text>
+        <Text style={styles.dim}>Photo, holds, mapping LEDs to holds</Text>
       </Pressable>
 
       <View style={styles.field}>
@@ -193,6 +197,7 @@ function WallSettings() {
 }
 
 const styles = StyleSheet.create({
+  switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   root: { flex: 1, backgroundColor: theme.bg },
   body: { padding: 16, gap: 10 },
   section: { color: theme.text, fontSize: 17, fontWeight: "700", marginTop: 8 },
@@ -297,6 +302,39 @@ function BoardSettings() {
         </Text>
       ) : null}
       {error ? <Text style={[styles.dim, { color: theme.danger }]}>{error}</Text> : null}
+    </>
+  );
+}
+
+/** Features that work on some walls and not others, off unless chosen. */
+function Experimental() {
+  const { db } = useApp();
+  const [detect, setDetect] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getSetting(db, DETECT_SETTING).then((v) => setDetect(v === "1"));
+  }, [db]);
+
+  return (
+    <>
+      <Text style={styles.section}>Experimental</Text>
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={styles.linkTitle}>Detect holds in the photo</Text>
+          <Text style={styles.dim}>
+            Finds holds for you when a wall photo is loaded. It works well on some walls and scatters dots over
+            others; Clear all in Edit holds removes them.
+          </Text>
+        </View>
+        <Switch
+          value={detect ?? false}
+          disabled={detect === null}
+          onValueChange={(v) => {
+            setDetect(v);
+            void setSetting(db, DETECT_SETTING, v ? "1" : "0");
+          }}
+        />
+      </View>
     </>
   );
 }

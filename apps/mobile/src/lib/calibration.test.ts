@@ -16,6 +16,7 @@ import {
   undoLast,
   type Calibration,
   type WallHold,
+  clearHolds,
 } from "./calibration";
 
 /** A calibration with detected holds at the given points. */
@@ -322,6 +323,38 @@ describe("holds used by problems", () => {
 
     expect(c.holds).toHaveLength(2);
     expect(c.holds.find((h) => h.x === 0.2)).toMatchObject({ led: null });
+  });
+});
+
+describe("clearHolds", () => {
+  it("removes every hold and its LED, except those problems use", () => {
+    let c = mergeDetections(emptyCalibration(10), [
+      { x: 0.1, y: 0.1 },
+      { x: 0.5, y: 0.5 },
+      { x: 0.9, y: 0.9 },
+    ]);
+    c = assignLed(c, 0, 0.1, 0.1);
+    c = { ...assignLed(c, 1, 0.5, 0.5), nextLed: 2 };
+    const used = c.holds[1]!.id;
+
+    const cleared = clearHolds(c, new Set([used]));
+
+    expect(cleared.holds).toEqual([c.holds[1]]);
+    expect(cleared.holds[0]!.led).toBe(1);
+    expect(cleared.nextHoldId).toBe(c.nextHoldId);
+    /* LED 0 lost its hold, so the next sweep must start there again. */
+    expect(cleared.nextLed).toBe(0);
+    expect(clearHolds(c).holds).toEqual([]);
+  });
+});
+
+describe("hold dots", () => {
+  it("default to opaque yellow, and survive a reset", () => {
+    const c = emptyCalibration();
+    expect(c.dotColor).toBe("#ffe600");
+    expect(c.dotOpacity).toBe(1);
+    const styled = { ...c, dotColor: "#000000", dotOpacity: 0.6 };
+    expect(resetCalibration(styled)).toMatchObject({ dotColor: "#000000", dotOpacity: 0.6 });
   });
 });
 
