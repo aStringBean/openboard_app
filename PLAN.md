@@ -53,12 +53,6 @@ lines, not a project.
 3. **Do not use Moonboard mode.** Fixed LED count, seven hardcoded colours, and
    a 128-byte message buffer. Aurora API3 is the target.
 
-### Unrelated firmware bug spotted while reading
-
-`bt_init()` calls `bt_conn_disconnect(active_conn, ...)` at `bt_setup.c:229`
-with no NULL check, on the board-switch path where `bt_is_ready()` is true but
-nothing is connected. Worth a guard.
-
 ## The critical problem: onboarding a wall
 
 Before a user can do anything, the app must learn where every hold is. On a
