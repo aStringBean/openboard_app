@@ -111,7 +111,17 @@ describe("walls", () => {
       role: null,
       setterPolicy: "everyone",
       roleColors: {},
+      mirror: null,
     });
+  });
+
+  it("saves a mirror layout's pairs, and turning it off", async () => {
+    const wall = await createWall(db, WALL, "Garage");
+    await updateWall(db, { ...wall, mirror: { pairs: [[0, 2], [1, 1]] } });
+    expect((await getWall(db, WALL)).mirror).toEqual({ pairs: [[0, 2], [1, 1]] });
+
+    await updateWall(db, { ...wall, mirror: null });
+    expect((await getWall(db, WALL)).mirror).toBeNull();
   });
 
   it("saves the wall's own role colours", async () => {
@@ -267,6 +277,7 @@ const tick = (over: Partial<Tick> = {}): Tick => ({
   problemId: "p1",
   climbedAt: 5000,
   userId: null,
+  mirrored: false,
   angle: 40,
   attempts: 2,
   grade: 7,
@@ -296,6 +307,17 @@ describe("ticks", () => {
 
     /* Setter said 5; two ascents say 7 → (5 + 7 + 7) / 3 = 6.33 → 6. */
     expect((await listProblems(db, WALL))[0]).toMatchObject({ consensus: 6, stars: 2.5, ascents: 2, ticked: true });
+  });
+
+  it("remember which way round they were climbed, and on a mirror layout need both", async () => {
+    /* Holds 0 and 2 mirror each other; 1 is on the centre line. */
+    await updateWall(db, { ...(await getWall(db, WALL)), mirror: { pairs: [[0, 2], [1, 1]] } });
+    await saveTick(db, tick({ id: "a" }));
+    expect((await listProblems(db, WALL))[0]).toMatchObject({ ticked: false, half: true });
+
+    await saveTick(db, tick({ id: "b", mirrored: true }));
+    expect((await ticksFor(db, "p1")).map((t) => t.mirrored).sort()).toEqual([false, true]);
+    expect((await listProblems(db, WALL))[0]).toMatchObject({ ticked: true, half: false });
   });
 
   it("go when their problem is deleted", async () => {

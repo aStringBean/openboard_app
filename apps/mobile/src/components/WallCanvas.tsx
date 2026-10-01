@@ -27,6 +27,9 @@ interface Props {
   problemRoles?: ReadonlyMap<number, Role>;
   /** The wall's own role colours; defaults for the rest. */
   roleColors?: RoleColors;
+  /** Holds ringed in a colour of the caller's choosing, drawn as problem
+   * holds are; with showUnused, the rest as faint dots. */
+  marks?: ReadonlyMap<number, string>;
   /** How to draw holds without an LED while setting up: colour and opacity. */
   dotColor?: string;
   dotOpacity?: number;
@@ -88,6 +91,7 @@ export function WallCanvas({
   highlightLed,
   problemRoles,
   roleColors,
+  marks,
   dotColor = "#ffe600",
   dotOpacity = 1,
   showUnused = false,
@@ -286,12 +290,13 @@ export function WallCanvas({
     const ring = SIZE / zoom;
     const border = 1.5 / zoom;
 
-    if (problemRoles) {
+    if (problemRoles || marks) {
       const border = 2.5 / zoom;
       return holds.map((h) => {
-        const role = problemRoles.get(h.id);
+        const role = problemRoles?.get(h.id);
+        const mark = marks?.get(h.id);
 
-        if (!role) {
+        if (!role && !mark) {
           if (!showUnused) return null;
           return (
             <View
@@ -313,7 +318,7 @@ export function WallCanvas({
           );
         }
 
-        const colour = roleUi(role, roleColors);
+        const colour = mark ?? roleUi(role!, roleColors);
         const size = ring * 1.5;
         return (
           <View
@@ -393,7 +398,20 @@ export function WallCanvas({
         </View>
       );
     });
-  }, [holds, zoom, highlightLed, selectedId, problemRoles, roleColors, dotColor, dotOpacity, showUnused, width, height]);
+  }, [
+    holds,
+    zoom,
+    highlightLed,
+    selectedId,
+    problemRoles,
+    roleColors,
+    marks,
+    dotColor,
+    dotOpacity,
+    showUnused,
+    width,
+    height,
+  ]);
 
   return (
     <GestureDetector gesture={gesture}>

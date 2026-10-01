@@ -1,6 +1,7 @@
 /**
  * A wall's settings. Pure, so it can be tested in Node.
  */
+import type { Mirror } from "./mirror";
 import type { RoleColors } from "./problem";
 
 export type AngleMode = "fixed" | "adjustable";
@@ -26,6 +27,8 @@ export interface Wall {
   setterPolicy: SetterPolicy;
   /** The roles this wall lights in its own colours; the rest follow the defaults. */
   roleColors: RoleColors;
+  /** A mirror layout's hold pairs; null if the board is not one. */
+  mirror: Mirror | null;
 }
 
 /*

@@ -125,7 +125,7 @@ export function CircuitScreen() {
               {current.name}
             </Text>
             <Text style={styles.dim}>
-              {summary?.ticked ? "✓ ticked" : "not ticked yet"}
+              {summary?.ticked ? "✓ ticked" : summary?.half ? "½ ticked one way round" : "not ticked yet"}
               {summary?.stars != null ? `  ${starsText(summary.stars)}` : ""}
             </Text>
           </View>

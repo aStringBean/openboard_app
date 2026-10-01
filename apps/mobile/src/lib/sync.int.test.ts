@@ -20,6 +20,7 @@ import {
   deleteProblem,
   getProblem,
   getWall,
+  ticksFor,
   listComments,
   listLists,
   listMembers,
@@ -187,6 +188,7 @@ describe("sync between two phones", () => {
     await saveTick(owner.db, {
       id: newId(),
       problemId: ownersProblem.id,
+      mirrored: false,
       climbedAt: Date.now() - 30_000,
       angle: 40,
       attempts: 1,
@@ -255,6 +257,7 @@ describe("sync between two phones", () => {
     await saveTick(climber.db, {
       id: newId(),
       problemId: ownersProblem.id,
+      mirrored: false,
       climbedAt: Date.now(),
       angle: 40,
       attempts: 4,
@@ -352,6 +355,33 @@ describe("sync between two phones", () => {
 
     await climber.sync(wallId);
     expect((await getWall(climber.db, wallId)).roleColors).toEqual({ no_match: orange });
+  });
+
+  it("gives members the mirror layout, and brings back which way round they climbed", async () => {
+    const wall = await getWall(owner.db, wallId);
+    const holds = (await loadCalibration(owner.db, wallId)).holds.map((h) => h.id);
+    const mirror = { pairs: [[holds[0]!, holds[1]!]] as [number, number][] };
+    await updateWall(owner.db, { ...wall, mirror });
+    await owner.sync(wallId);
+    await climber.sync(wallId);
+    expect((await getWall(climber.db, wallId)).mirror).toEqual(mirror);
+
+    const id = newId();
+    await saveTick(climber.db, {
+      id,
+      problemId: ownersProblem.id,
+      mirrored: true,
+      climbedAt: Date.now(),
+      angle: 40,
+      attempts: 2,
+      grade: null,
+      stars: null,
+      comment: "",
+      userId: climber.me,
+    });
+    expect(await climber.sync(wallId)).toMatchObject({ failed: 0 });
+    await owner.sync(wallId);
+    expect((await ticksFor(owner.db, ownersProblem.id)).find((t) => t.id === id)).toMatchObject({ mirrored: true });
   });
 
   it("hands the wall to a member, and back", async () => {

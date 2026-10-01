@@ -25,8 +25,10 @@ export function ProblemRow({
 }) {
   return (
     <Pressable style={[styles.row, dimmed && styles.dimmed]} onPress={onPress}>
-      <View style={[styles.tickMark, item.ticked && styles.tickMarkOn]}>
-        <Text style={styles.tickMarkText}>{item.flashed ? "⚡" : item.ticked ? "✓" : ""}</Text>
+      <View style={[styles.tickMark, item.ticked && styles.tickMarkOn, item.half && styles.tickMarkHalf]}>
+        <Text style={[styles.tickMarkText, item.half && styles.tickMarkTextHalf]}>
+          {item.ticked ? (item.flashed ? "⚡" : "✓") : item.half ? "½" : ""}
+        </Text>
       </View>
       <View style={styles.main}>
         <Text style={styles.name} numberOfLines={1}>
@@ -67,7 +69,8 @@ const styles = StyleSheet.create({
   grade: { color: theme.text, fontSize: 17, fontWeight: "700" },
   stars: { color: "#ffc94d", fontSize: 13 },
   /* Ticked problems carry a check (or a bolt for a flash); unticked ones an
-   * empty circle, so the column lines up either way. */
+   * empty circle, so the column lines up either way. On a mirror layout, a
+   * problem climbed one way round but not the other is half ticked. */
   tickMark: {
     width: 26,
     height: 26,
@@ -79,4 +82,6 @@ const styles = StyleSheet.create({
   },
   tickMarkOn: { borderColor: theme.good, backgroundColor: "rgba(61,220,132,0.18)" },
   tickMarkText: { color: theme.good, fontSize: 13, fontWeight: "800" },
+  tickMarkHalf: { borderColor: theme.good, borderStyle: "dashed" },
+  tickMarkTextHalf: { fontSize: 12 },
 });

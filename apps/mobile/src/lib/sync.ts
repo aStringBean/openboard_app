@@ -37,6 +37,7 @@ import {
   type OutboxEntry,
 } from "./db/repo";
 import type { Db } from "./db/types";
+import { parseMirror } from "./mirror";
 import { parseRoleColors, type Role } from "./problem";
 import type { AngleMode, SetterPolicy, WallRole } from "./wall";
 
@@ -261,6 +262,7 @@ async function sendWall(db: Db, sb: SupabaseClient, wallId: string) {
     setter_policy: SetterPolicy;
     calibration: string;
     role_colors: string;
+    mirror: string | null;
   }>("SELECT * FROM wall WHERE id = ?", [wallId]);
   if (!w) return;
   const fields = {
@@ -271,6 +273,7 @@ async function sendWall(db: Db, sb: SupabaseClient, wallId: string) {
     setter_policy: w.setter_policy,
     chain_length: (JSON.parse(w.calibration) as { chainLength: number }).chainLength,
     role_colors: parseRoleColors(w.role_colors),
+    mirror: parseMirror(w.mirror),
   };
 
   /*
@@ -388,6 +391,7 @@ async function sendTick(db: Db, sb: SupabaseClient, id: string, wallId: string) 
     stars: number | null;
     comment: string;
     user_id: string | null;
+    mirrored: number;
   }>("SELECT * FROM tick WHERE id = ?", [id]);
   if (!t) return;
   await afterProblem(db, t.problem_id);
@@ -403,6 +407,7 @@ async function sendTick(db: Db, sb: SupabaseClient, id: string, wallId: string) 
       grade: t.grade,
       stars: t.stars,
       comment: t.comment,
+      mirrored: t.mirrored === 1,
       deleted_at: null,
     }),
   );
@@ -481,6 +486,7 @@ interface ServerWall {
   photo_version: number;
   holds_version: number;
   role_colors: unknown;
+  mirror: unknown;
 }
 
 async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
@@ -492,9 +498,10 @@ async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
   /* Members keep the angle they last saw the wall at, while it is one the wall offers. */
   const keepAngle = w.owner_id !== me && row !== undefined && w.angles.includes(row.current_angle);
   const angle = keepAngle ? row.current_angle : w.current_angle;
+  const mirror = parseMirror(w.mirror);
   await db.run(
     `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, calibration = ?,
-                     role_colors = ?
+                     role_colors = ?, mirror = ?
      WHERE id = ?`,
     [
       w.name,
@@ -504,6 +511,7 @@ async function applyWall(db: Db, wallId: string, w: ServerWall, me: string) {
       w.setter_policy,
       JSON.stringify(state),
       JSON.stringify(parseRoleColors(w.role_colors)),
+      mirror ? JSON.stringify(mirror) : null,
       wallId,
     ],
   );
@@ -733,6 +741,8 @@ async function applyTick(
     grade: number | null;
     stars: number | null;
     comment: string;
+    /* Missing from a server that predates mirror layouts. */
+    mirrored?: boolean;
     updated_at: string;
     deleted_at: string | null;
   },
@@ -756,6 +766,7 @@ async function applyTick(
       grade: r.grade,
       stars: r.stars,
       comment: r.comment,
+      mirrored: r.mirrored ?? false,
     },
     { fromServer: true },
   );

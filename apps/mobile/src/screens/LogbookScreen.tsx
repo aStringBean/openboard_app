@@ -29,10 +29,12 @@ export function LogbookScreen() {
   );
 
   const problems = new Set(entries?.map((e) => e.problemId)).size;
-  /* A flash is a problem's first ascent in one go. Entries are newest first,
-   * so the last entry seen for a problem is its first ascent. */
+  /* A flash is a problem's first ascent in one go; on a mirror layout, its
+   * first ascent each way round. Entries are newest first, so the last entry
+   * seen for a problem, that way round, is its first ascent. */
+  const way = (e: LogEntry) => `${e.problemId}${e.mirrored ? ":mirrored" : ""}`;
   const firsts = new Map<string, LogEntry>();
-  for (const e of entries ?? []) firsts.set(e.problemId, e);
+  for (const e of entries ?? []) firsts.set(way(e), e);
   const flashes = [...firsts.values()].filter(isFlash).length;
 
   return (
@@ -67,12 +69,13 @@ export function LogbookScreen() {
               </Text>
               <Text style={styles.dim}>
                 {shortDate(item.climbedAt)} ·{" "}
-                {firsts.get(item.problemId) === item && isFlash(item)
+                {firsts.get(way(item)) === item && isFlash(item)
                   ? "flash"
                   : isFlash(item)
                     ? "one go"
                     : `${item.attempts} goes`}
                 {wall.angleMode === "adjustable" ? ` · ${item.angle}°` : ""}
+                {item.mirrored ? " · mirrored" : ""}
               </Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>

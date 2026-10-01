@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
-import { AnglePicker, GradePicker, StarsInput } from "../components/Pickers";
-import { getProblem, saveTick, ticksFor } from "../lib/db/repo";
+import { AnglePicker, GradePicker, Segmented, StarsInput } from "../components/Pickers";
+import { getProblem, loadCalibration, saveTick, ticksFor } from "../lib/db/repo";
+import { hasTwin, mirrorMap } from "../lib/mirror";
 import { newId, type Problem } from "../lib/problem";
 import { gradeAt, validateTick, type Tick } from "../lib/tick";
 import { useApp } from "../state/AppProvider";
@@ -15,7 +16,8 @@ import { theme } from "../theme";
 export function TickScreen() {
   const { db, wall, me, gradeScale } = useApp();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  /* mirrored: which way round the problem page was showing it. */
+  const { id, mirrored: shownMirrored } = useLocalSearchParams<{ id: string; mirrored?: string }>();
 
   const [problem, setProblem] = useState<Problem | null>(null);
   const [ticks, setTicks] = useState<Tick[]>([]);
@@ -25,12 +27,16 @@ export function TickScreen() {
   const [stars, setStars] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const [gradeTouched, setGradeTouched] = useState(false);
+  const [mirrored, setMirrored] = useState(shownMirrored === "1");
+  /* The wall's holds, to tell whether there is a mirrored twin to climb. */
+  const [holdIds, setHoldIds] = useState<number[] | null>(null);
 
   useEffect(() => {
-    Promise.all([getProblem(db, id), ticksFor(db, id)]).then(([p, t]) => {
+    Promise.all([getProblem(db, id), ticksFor(db, id), loadCalibration(db, wall.id)]).then(([p, t, c]) => {
       if (!p) return;
       setProblem(p);
       setTicks(t);
+      setHoldIds(c.holds.map((h) => h.id));
       /* On a fixed wall there is only the set angle; on an adjustable one,
        * default to where the wall is now. */
       setAngle(wall.angleMode === "fixed" ? p.angle : wall.currentAngle);
@@ -44,6 +50,14 @@ export function TickScreen() {
     setGrade(gradeAt(problem, ticks, angle) ?? problem.grade);
   }, [problem, ticks, angle, gradeTouched]);
 
+  /* Which way round only matters with a distinct mirrored problem: not for a
+   * symmetric one, nor one with a hold that has no partner. */
+  const twin = useMemo(
+    () => !!problem && !!wall.mirror && !!holdIds && hasTwin(problem.holds, mirrorMap(wall.mirror, holdIds)),
+    [problem, wall.mirror, holdIds],
+  );
+  const way = twin && mirrored;
+
   const save = async () => {
     if (!problem) return;
     const tick: Tick = {
@@ -56,6 +70,7 @@ export function TickScreen() {
       stars,
       comment,
       userId: me,
+      mirrored: way,
     };
 
     const issues = validateTick(tick);
@@ -77,7 +92,8 @@ export function TickScreen() {
     );
   }
 
-  const first = ticks.length === 0;
+  /* My first ascent, that way round: each way round is its own climb. */
+  const first = !ticks.some((t) => (t.userId === null || t.userId === me) && (!twin || t.mirrored === way));
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
@@ -103,6 +119,20 @@ export function TickScreen() {
             <Text style={styles.stepText}>+</Text>
           </Pressable>
         </View>
+
+        {twin ? (
+          <>
+            <Text style={styles.label}>Climbed</Text>
+            <Segmented<"set" | "mirrored">
+              options={[
+                { value: "set", label: "As set" },
+                { value: "mirrored", label: "Mirrored" },
+              ]}
+              value={mirrored ? "mirrored" : "set"}
+              onChange={(v) => setMirrored(v === "mirrored")}
+            />
+          </>
+        ) : null}
 
         {wall.angleMode === "adjustable" ? (
           <>

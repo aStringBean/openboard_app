@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
 import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
-import { starsText } from "../components/Pickers";
+import { Segmented, starsText } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas } from "../components/WallCanvas";
 import { useFocusReload } from "../components/useFocusReload";
@@ -27,8 +27,9 @@ import {
   type CommentView,
 } from "../lib/db/repo";
 import { gradeLabel } from "../lib/grades";
+import { hasTwin, mirrorMap, mirrorProblem, unpairedIn } from "../lib/mirror";
 import { countRoles, newId, problemFrame, ROLE_STYLE, ROLES, roleUi, type Problem } from "../lib/problem";
-import { averageStars, byAngle, gradeAt, isFlash, shortDate, type Tick } from "../lib/tick";
+import { averageStars, byAngle, gradeAt, isFlash, myAscents, shortDate, type Tick } from "../lib/tick";
 import { canEditProblem } from "../lib/wall";
 import { useApp } from "../state/AppProvider";
 import { theme } from "../theme";
@@ -45,6 +46,9 @@ export function ProblemViewScreen() {
   const [comments, setComments] = useState<CommentView[]>([]);
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState("");
+  /* On a mirror layout: showing and lighting the problem mirrored. Kept while
+   * swiping to the next problem, as a session tends to stay on one side. */
+  const [mirrored, setMirrored] = useState(false);
   const panelRef = useRef<ScrollView>(null);
   /* Where the comment box sits in the panel, and whether it is being typed in:
    * while it is, the panel keeps it in view as the keyboard shrinks the panel. */
@@ -80,9 +84,30 @@ export function ProblemViewScreen() {
   /* Reload on focus, so returning from the editor or a tick shows it. */
   useFocusReload(reload);
 
+  const pairs = useMemo(
+    () =>
+      wall.mirror && cal
+        ? mirrorMap(
+            wall.mirror,
+            cal.holds.map((h) => h.id),
+          )
+        : null,
+    [wall.mirror, cal],
+  );
+  /* Whether there is a distinct mirrored problem to climb. */
+  const twin = !!problem && !!pairs && hasTwin(problem.holds, pairs);
+  const showMirrored = mirrored && twin;
+  const shown = useMemo(
+    () =>
+      problem && pairs && showMirrored
+        ? (mirrorProblem(problem.holds, pairs) ?? problem.holds)
+        : (problem?.holds ?? []),
+    [problem, pairs, showMirrored],
+  );
+
   const frame = useMemo(
-    () => (problem && cal ? problemFrame(problem.holds, cal.holds, wall.roleColors) : null),
-    [problem, cal, wall.roleColors],
+    () => (problem && cal ? problemFrame(shown, cal.holds, wall.roleColors) : null),
+    [problem, cal, shown, wall.roleColors],
   );
 
   const light = useCallback(() => {
@@ -122,7 +147,7 @@ export function ProblemViewScreen() {
     [go],
   );
 
-  const roles = useMemo(() => new Map(problem?.holds.map((h) => [h.holdId, h.role]) ?? []), [problem]);
+  const roles = useMemo(() => new Map(shown.map((h) => [h.holdId, h.role])), [shown]);
   const counts = useMemo(() => countRoles(problem?.holds ?? []), [problem]);
 
   /* Mine: ticked here before signing in, or by me since. */
@@ -208,12 +233,13 @@ export function ProblemViewScreen() {
   const connected = conn.status === "connected";
   const editable = canEditProblem(wall, problem.setterId, me);
   const mine = ticks.filter((t) => isMine(t.userId));
+  const unpaired = pairs ? unpairedIn(problem.holds, pairs).length : 0;
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       {/* The panel sits where the keyboard comes up: lift the screen, and the photo gives way. */}
       <LiftAboveKeyboard>
-        <Stack.Screen options={{ title: problem.name }} />
+        <Stack.Screen options={{ title: showMirrored ? `${problem.name} · mirrored` : problem.name }} />
 
         <View style={styles.canvas} onLayout={onCanvasLayout}>
           {cal.photoUri && canvasWidth > 0 ? (
@@ -289,10 +315,28 @@ export function ProblemViewScreen() {
               </Text>
             ) : null}
 
+            {twin ? (
+              <Segmented<"set" | "mirrored">
+                options={[
+                  { value: "set", label: "As set" },
+                  { value: "mirrored", label: "Mirrored" },
+                ]}
+                value={showMirrored ? "mirrored" : "set"}
+                onChange={(v) => setMirrored(v === "mirrored")}
+              />
+            ) : pairs && unpaired > 0 ? (
+              <Text style={styles.note}>
+                Can&apos;t be mirrored: {unpaired} of its holds {unpaired > 1 ? "have" : "has"} no mirror partner. Pair
+                {unpaired > 1 ? " them" : " it"} in Wall setup.
+              </Text>
+            ) : pairs ? (
+              <Text style={styles.dim}>Symmetric: the same climb both ways round.</Text>
+            ) : null}
+
             <View style={styles.actions}>
               <Pressable
                 style={[styles.btn, styles.primary]}
-                onPress={() => router.push(`/problem/tick?id=${problem.id}`)}
+                onPress={() => router.push(`/problem/tick?id=${problem.id}&mirrored=${showMirrored ? 1 : 0}`)}
               >
                 <Text style={styles.primaryText}>Tick</Text>
               </Pressable>
@@ -304,13 +348,7 @@ export function ProblemViewScreen() {
             <Text style={styles.section}>
               {ticks.length === 0
                 ? "Not climbed yet"
-                : `${ticks.length} ascent${ticks.length > 1 ? "s" : ""}${
-                    mine.length && isFlash(mine[mine.length - 1]!)
-                      ? " · you flashed it"
-                      : mine.length
-                        ? " · ticked"
-                        : ""
-                  }`}
+                : `${ticks.length} ascent${ticks.length > 1 ? "s" : ""}${mine.length ? ` · ${myAscents(mine, twin)}` : ""}`}
             </Text>
 
             {adjustable && angles.length > 1
@@ -329,6 +367,7 @@ export function ProblemViewScreen() {
                     {wall.cloud ? `${nameOf(t.userId)} · ` : ""}
                     {shortDate(t.climbedAt)} · {isFlash(t) ? "one go" : `${t.attempts} goes`}
                     {adjustable ? ` · ${t.angle}°` : ""}
+                    {t.mirrored ? " · mirrored" : ""}
                   </Text>
                   {t.comment ? <Text style={styles.dim}>{t.comment}</Text> : null}
                 </View>

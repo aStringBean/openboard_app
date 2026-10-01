@@ -1,5 +1,6 @@
 import { emptyCalibration, type Calibration, type WallHold } from "../calibration";
 import { summarise, type ProblemSummary } from "../catalog";
+import { mirrorMap, parseMirror } from "../mirror";
 import { parseRoleColors, type Problem, type Role } from "../problem";
 import type { Tick } from "../tick";
 import { DEFAULT_FIXED_ANGLE, type AngleMode, type SetterPolicy, type Wall, type WallRole } from "../wall";
@@ -20,6 +21,7 @@ interface WallRow {
   my_role: WallRole | null;
   setter_policy: SetterPolicy;
   role_colors: string;
+  mirror: string | null;
 }
 
 /** Sweep bookkeeping. It is only ever read and written whole, so it is JSON. */
@@ -51,6 +53,7 @@ const wallOf = (r: WallRow): Wall => ({
   role: r.my_role,
   setterPolicy: r.setter_policy,
   roleColors: parseRoleColors(r.role_colors),
+  mirror: parseMirror(r.mirror),
 });
 
 export async function firstWall(db: Db): Promise<Wall | undefined> {
@@ -98,7 +101,8 @@ export async function createWall(
 
 export async function updateWall(db: Db, wall: Wall): Promise<void> {
   await db.run(
-    `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, role_colors = ?
+    `UPDATE wall SET name = ?, angle_mode = ?, angles = ?, current_angle = ?, setter_policy = ?, role_colors = ?,
+                     mirror = ?
      WHERE id = ?`,
     [
       wall.name,
@@ -107,6 +111,7 @@ export async function updateWall(db: Db, wall: Wall): Promise<void> {
       wall.currentAngle,
       wall.setterPolicy,
       JSON.stringify(wall.roleColors),
+      wall.mirror ? JSON.stringify(wall.mirror) : null,
       wall.id,
     ],
   );
@@ -351,14 +356,19 @@ export async function listProblems(db: Db, wallId: string, me: string | null = n
     "SELECT id, name, grade, angle, created_at, setter_id FROM problem WHERE wall_id = ? ORDER BY created_at DESC",
     [wallId],
   );
-  const holds = await db.all<{ problem_id: string; hold_id: number }>(
-    "SELECT problem_id, hold_id FROM problem_hold WHERE wall_id = ?",
+  const holds = await db.all<{ problem_id: string; hold_id: number; role: Role }>(
+    "SELECT problem_id, hold_id, role FROM problem_hold WHERE wall_id = ?",
     [wallId],
   );
   const ticks = await db.all<TickRow>(
     "SELECT t.* FROM tick t JOIN problem p ON p.id = t.problem_id WHERE p.wall_id = ?",
     [wallId],
   );
+  const wall = await db.get<{ mirror: string | null }>("SELECT mirror FROM wall WHERE id = ?", [wallId]);
+  const mirror = parseMirror(wall?.mirror ?? null);
+  const holdIds = mirror
+    ? (await db.all<{ id: number }>("SELECT id FROM hold WHERE wall_id = ?", [wallId])).map((h) => h.id)
+    : [];
 
   return summarise(
     problems.map((p) => ({
@@ -369,9 +379,10 @@ export async function listProblems(db: Db, wallId: string, me: string | null = n
       createdAt: p.created_at,
       setterId: p.setter_id,
     })),
-    holds.map((h) => ({ problemId: h.problem_id, holdId: h.hold_id })),
+    holds.map((h) => ({ problemId: h.problem_id, holdId: h.hold_id, role: h.role })),
     ticks.map(tickOf),
     me,
+    mirror ? mirrorMap(mirror, holdIds) : null,
   );
 }
 
@@ -454,6 +465,7 @@ interface TickRow {
   stars: number | null;
   comment: string;
   user_id: string | null;
+  mirrored: number;
 }
 
 const tickOf = (r: TickRow): Tick => ({
@@ -466,6 +478,7 @@ const tickOf = (r: TickRow): Tick => ({
   stars: r.stars,
   comment: r.comment,
   userId: r.user_id,
+  mirrored: r.mirrored === 1,
 });
 
 const wallOfProblem = async (db: Db, problemId: string) =>
@@ -473,12 +486,13 @@ const wallOfProblem = async (db: Db, problemId: string) =>
 
 export async function saveTick(db: Db, t: Tick, opts: SaveOptions = {}): Promise<void> {
   await db.run(
-    `INSERT INTO tick (id, problem_id, climbed_at, angle, attempts, grade, stars, comment, user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tick (id, problem_id, climbed_at, angle, attempts, grade, stars, comment, user_id, mirrored)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        climbed_at = excluded.climbed_at, angle = excluded.angle, attempts = excluded.attempts,
-       grade = excluded.grade, stars = excluded.stars, comment = excluded.comment, user_id = excluded.user_id`,
-    [t.id, t.problemId, t.climbedAt, t.angle, t.attempts, t.grade, t.stars, t.comment.trim(), t.userId],
+       grade = excluded.grade, stars = excluded.stars, comment = excluded.comment, user_id = excluded.user_id,
+       mirrored = excluded.mirrored`,
+    [t.id, t.problemId, t.climbedAt, t.angle, t.attempts, t.grade, t.stars, t.comment.trim(), t.userId, t.mirrored ? 1 : 0],
   );
   const wallId = await wallOfProblem(db, t.problemId);
   if (wallId && !opts.fromServer) await enqueue(db, "tick", t.id, wallId, "upsert");

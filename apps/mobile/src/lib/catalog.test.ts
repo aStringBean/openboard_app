@@ -10,6 +10,7 @@ import {
   type ProblemRow,
   type ProblemSummary,
 } from "./catalog";
+import { mirrorMap } from "./mirror";
 import type { Tick } from "./tick";
 
 const row = (id: string, grade = 6): ProblemRow => ({ id, name: id, grade, angle: 40, createdAt: 1 });
@@ -20,6 +21,7 @@ const tick = (problemId: string, over: Partial<Tick> = {}): Tick => ({
   climbedAt: 1000,
   angle: 40,
   attempts: 3,
+  mirrored: false,
   userId: null,
   grade: null,
   stars: null,
@@ -87,6 +89,63 @@ describe("summarise", () => {
   });
 });
 
+describe("on a mirror layout", () => {
+  /* 1 and 2 mirror each other; 3 is on the centre line; 9 has no partner. */
+  const mirror = mirrorMap({ pairs: [[1, 2], [3, 3]] });
+  const holds = (problemId: string, ...hs: [number, "start" | "finish"][]) =>
+    hs.map(([holdId, role]) => ({ problemId, holdId, role }));
+  const sum = (problemHolds: ReturnType<typeof holds>, ticks: Tick[]) =>
+    summarise([row("a")], problemHolds, ticks, "me", mirror)[0]!;
+  const twin = holds("a", [1, "start"], [3, "finish"]);
+
+  it("ticks a problem only once it is climbed both ways round", () => {
+    expect(sum(twin, [tick("a", { userId: "me" })])).toMatchObject({ ticked: false, half: true });
+    expect(sum(twin, [tick("a", { userId: "me", mirrored: true })])).toMatchObject({ ticked: false, half: true });
+    expect(
+      sum(twin, [tick("a", { userId: "me" }), tick("a", { userId: "me", mirrored: true })]),
+    ).toMatchObject({ ticked: true, half: false });
+  });
+
+  it("calls it flashed only when each way round was flashed", () => {
+    const set = (attempts: number, climbedAt = 1) => tick("a", { userId: "me", attempts, climbedAt });
+    const mirrored = (attempts: number, climbedAt = 2) =>
+      tick("a", { userId: "me", attempts, climbedAt, mirrored: true });
+    /* Flashed as set, then mirrored in one go after: the mirrored problem is a
+     * climb of its own, so that is a flash too. */
+    expect(sum(twin, [set(1), mirrored(1)]).flashed).toBe(true);
+    expect(sum(twin, [set(1), mirrored(3)]).flashed).toBe(false);
+    expect(sum(twin, [set(3), mirrored(1)]).flashed).toBe(false);
+    /* Half ticked: not flashed, however the one way went. */
+    expect(sum(twin, [set(1)]).flashed).toBe(false);
+  });
+
+  it("needs one way only for a problem with no twin to climb", () => {
+    /* A hold with no partner: no mirrored problem exists. */
+    expect(sum(holds("a", [1, "start"], [9, "finish"]), [tick("a", { userId: "me" })])).toMatchObject({
+      ticked: true,
+      half: false,
+    });
+    /* Its own reflection: the same climb either way. */
+    expect(sum(holds("a", [1, "start"], [2, "start"], [3, "finish"]), [tick("a", { userId: "me" })])).toMatchObject({
+      ticked: true,
+      half: false,
+    });
+  });
+
+  it("leaves a wall that is not a mirror layout as it was", () => {
+    expect(summarise([row("a")], twin, [tick("a", { userId: "me" })], "me")[0]).toMatchObject({
+      ticked: true,
+      half: false,
+    });
+  });
+
+  it("files a half-ticked problem under not ticked", () => {
+    const half = sum(twin, [tick("a", { userId: "me" })]);
+    expect(applyFilter([half], { ...DEFAULT_FILTER, ticked: "unticked" }, 40)).toHaveLength(1);
+    expect(applyFilter([half], { ...DEFAULT_FILTER, ticked: "ticked" }, 40)).toHaveLength(0);
+  });
+});
+
 describe("applyFilter", () => {
   const p = (id: string, over: Partial<ProblemSummary> = {}): ProblemSummary => ({
     id,
@@ -97,6 +156,7 @@ describe("applyFilter", () => {
     holdIds: [],
     consensus: 5,
     stars: null,
+    half: false,
     ascents: 0,
     ticked: false,
     flashed: false,

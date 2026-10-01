@@ -49,6 +49,7 @@ import {
   type Protected,
 } from "../lib/calibration";
 import { detectHoldsInPhoto } from "../lib/detectPhoto";
+import { mirrorMap, pairHolds, setPair, unpair } from "../lib/mirror";
 import { findOutliers } from "../lib/outliers";
 import { loadCalibration, problemsUsingHold, saveCalibration, usedHoldIds, getSetting } from "../lib/db/repo";
 import type { Quad } from "../lib/perspective";
@@ -57,7 +58,7 @@ import { straightenPhoto } from "../lib/straightenPhoto";
 import { useApp } from "../state/AppProvider";
 import { CALIBRATION_COLOUR, theme, VERIFY_COLOUR } from "../theme";
 
-type Mode = "idle" | "sweeping" | "verifying" | "editing" | "straightening";
+type Mode = "idle" | "sweeping" | "verifying" | "editing" | "straightening" | "mirroring";
 
 /** The photo being straightened, and whether it was only just picked. */
 interface Straightening {
@@ -69,6 +70,11 @@ interface Straightening {
 
 /** Screen pixels within which a tap selects a hold rather than adding one. */
 const HIT_PX = 24;
+
+/** Reviewing mirror pairs: a hold with no partner, the chosen hold, and its partner. */
+const UNPAIRED = "#ff9f1a";
+const SELECTED = "#ff3df0";
+const PARTNER = "#00e5ff";
 /** Saves are batched rather than written on every change. */
 const SAVE_DEBOUNCE_MS = 300;
 /** A held arrow waits this long, then repeats at this interval. */
@@ -78,7 +84,7 @@ const REPEAT_MS = 60;
 export function CalibrationScreen() {
   const [cal, setCal] = useState<Calibration>(emptyCalibration());
   const [loaded, setLoaded] = useState(false);
-  const { db, wall } = useApp();
+  const { db, wall, saveWall } = useApp();
   /* Holds that problems use: undo, re-detection and reset must keep them. */
   const [used, setUsed] = useState<Protected>(new Set());
   const usedRef = useRef<Protected>(used);
@@ -94,6 +100,8 @@ export function CalibrationScreen() {
   const [dotsOpen, setDotsOpen] = useState(false);
   const [straightening, setStraightening] = useState<Straightening | null>(null);
   const [warping, setWarping] = useState(false);
+  /* Reviewing mirror pairs: the hold whose partner is shown. */
+  const [mirrorSel, setMirrorSel] = useState<number | null>(null);
 
   /*
    * The latest calibration, readable synchronously. Every change goes through
@@ -180,6 +188,27 @@ export function CalibrationScreen() {
 
   const mapped = useMemo(() => mappedHolds(cal), [cal]);
   const outliers = useMemo(() => findOutliers(mapped), [mapped]);
+
+  /* Mirror layout: partners by hold, and the holds without one. */
+  const partners = useMemo(
+    () =>
+      mirrorMap(
+        wall.mirror,
+        cal.holds.map((h) => h.id),
+      ),
+    [wall.mirror, cal.holds],
+  );
+  const unpairedHolds = useMemo(() => cal.holds.filter((h) => !partners.has(h.id)), [cal.holds, partners]);
+  const mirrorMarks = useMemo(() => {
+    if (mode !== "mirroring") return undefined;
+    const marks = new Map<number, string>(unpairedHolds.map((h) => [h.id, UNPAIRED]));
+    if (mirrorSel !== null) {
+      const partner = partners.get(mirrorSel);
+      if (partner !== undefined) marks.set(partner, PARTNER);
+      marks.set(mirrorSel, partner === mirrorSel ? PARTNER : SELECTED);
+    }
+    return marks;
+  }, [mode, unpairedHolds, mirrorSel, partners]);
   const selected = selectedId === null ? null : (cal.holds.find((h) => h.id === selectedId) ?? null);
 
   const decided = decidedCount(cal);
@@ -339,6 +368,18 @@ export function CalibrationScreen() {
         return;
       }
 
+      if (mode === "mirroring") {
+        const hit = holdNear(c, x, y, { width: canvasWidth, height: canvasHeight, zoom: tapZoom, hitPx: HIT_PX });
+        if (!hit || hit.id === mirrorSel) return setMirrorSel(null);
+        /* With a hold chosen, tapping another makes them partners. */
+        if (mirrorSel !== null && wall.mirror) {
+          void saveWall({ ...wall, mirror: setPair(wall.mirror, mirrorSel, hit.id) });
+          return;
+        }
+        setMirrorSel(hit.id);
+        return;
+      }
+
       if (mode === "verifying" && mapped.length) {
         let best = mapped[0]!;
         let bestD = Infinity;
@@ -352,7 +393,7 @@ export function CalibrationScreen() {
         void board.lightOne(best.led, VERIFY_COLOUR);
       }
     },
-    [mode, mapped, canvasWidth, canvasHeight, decide, select, commit],
+    [mode, mapped, canvasWidth, canvasHeight, decide, select, commit, mirrorSel, wall, saveWall],
   );
 
   // --------------------------------------------------------------- actions
@@ -476,6 +517,54 @@ export function CalibrationScreen() {
     );
   };
 
+  // ------------------------------------------------------------ mirror layout
+
+  const autoPair = () => void saveWall({ ...wall, mirror: pairHolds(calRef.current.holds).mirror });
+
+  const startMirror = () => {
+    const begin = () => {
+      autoPair();
+      setMirrorSel(null);
+      setMode("mirroring");
+    };
+    /* Pairing reflects holds across the photo's centre line, which is only
+     * the board's when the board is square-on. */
+    if (straighteningOf(calRef.current)) return begin();
+    Alert.alert(
+      "Straighten the photo first?",
+      "Holds are paired with their reflection across the board's centre line. That works best with the board square-on in the photo.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Pair anyway", onPress: begin },
+        { text: "Straighten", onPress: openStraighten },
+      ],
+    );
+  };
+
+  const repair = () =>
+    Alert.alert("Pair every hold again?", "Pairs you set by hand are replaced by what the photo suggests.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Pair again", onPress: autoPair },
+    ]);
+
+  const stopMirror = () =>
+    Alert.alert(
+      "Not a mirror layout?",
+      "Problems can no longer be climbed mirrored. Ascents already logged mirrored are kept.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Turn off",
+          style: "destructive",
+          onPress: () => {
+            void saveWall({ ...wall, mirror: null });
+            setMirrorSel(null);
+            setMode("idle");
+          },
+        },
+      ],
+    );
+
   const exportJson = async () => {
     const file = new File(Paths.cache, "wall-calibration.json");
 
@@ -536,7 +625,14 @@ export function CalibrationScreen() {
       <LiftAboveKeyboard>
         <Stack.Screen
           options={{
-            title: mode === "editing" ? "Edit holds" : mode === "straightening" ? "Straighten" : "Wall setup",
+            title:
+              mode === "editing"
+                ? "Edit holds"
+                : mode === "straightening"
+                  ? "Straighten"
+                  : mode === "mirroring"
+                    ? "Mirror pairs"
+                    : "Wall setup",
           }}
         />
 
@@ -566,6 +662,8 @@ export function CalibrationScreen() {
                   onMoveSelected={onMoveSelected}
                   dotColor={cal.dotColor}
                   dotOpacity={cal.dotOpacity}
+                  marks={mirrorMarks}
+                  showUnused={mode === "mirroring"}
                   ref={canvasRef}
                 />
               ) : (
@@ -598,6 +696,56 @@ export function CalibrationScreen() {
                   </Pressable>
                   <Pressable style={styles.btn} onPress={stopSweep}>
                     <Text style={styles.btnText}>Stop</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : mode === "mirroring" ? (
+              <View style={[styles.editBar, { borderTopColor: PARTNER }]}>
+                <Text style={styles.editInfo}>
+                  {mirrorSel === null
+                    ? `${cal.holds.length - unpairedHolds.length} of ${cal.holds.length} holds paired${
+                        unpairedHolds.length ? ` · ${unpairedHolds.length} without a partner, ringed orange` : ""
+                      }. Tap a hold to see its partner.`
+                    : partners.get(mirrorSel) === mirrorSel
+                      ? `Hold ${mirrorSel} is on the centre line: its own mirror image. Tap another hold to pair them instead.`
+                      : partners.has(mirrorSel)
+                        ? `Hold ${mirrorSel} pairs with hold ${partners.get(mirrorSel)} (cyan). Tap another hold to pair it instead.`
+                        : `Hold ${mirrorSel} has no partner. Tap the hold that mirrors it.`}
+                </Text>
+                {mirrorSel !== null ? (
+                  <View style={styles.editRow}>
+                    <Pressable
+                      style={styles.btn}
+                      onPress={() =>
+                        wall.mirror && void saveWall({ ...wall, mirror: setPair(wall.mirror, mirrorSel, mirrorSel) })
+                      }
+                    >
+                      <Text style={styles.btnText}>Centre line</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.btn, !partners.has(mirrorSel) && styles.btnDisabled]}
+                      disabled={!partners.has(mirrorSel)}
+                      onPress={() => wall.mirror && void saveWall({ ...wall, mirror: unpair(wall.mirror, mirrorSel) })}
+                    >
+                      <Text style={styles.btnText}>Unpair</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                <View style={styles.editRow}>
+                  <Pressable style={styles.btn} onPress={repair}>
+                    <Text style={styles.btnText}>Pair again</Text>
+                  </Pressable>
+                  <Pressable style={styles.btn} onPress={stopMirror}>
+                    <Text style={[styles.btnText, { color: theme.danger }]}>Turn off</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.btn, styles.btnPrimary]}
+                    onPress={() => {
+                      setMirrorSel(null);
+                      setMode("idle");
+                    }}
+                  >
+                    <Text style={[styles.btnText, styles.btnTextPrimary]}>Done</Text>
                   </Pressable>
                 </View>
               </View>
@@ -737,6 +885,28 @@ export function CalibrationScreen() {
                   </Pressable>
                   <Pressable style={styles.btn} onPress={reset}>
                     <Text style={[styles.btnText, { color: theme.danger }]}>Reset</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.btnRow}>
+                  <Pressable
+                    style={[
+                      styles.btn,
+                      wall.mirror !== null && styles.btnActive,
+                      !cal.holds.length && styles.btnDisabled,
+                    ]}
+                    disabled={!cal.holds.length}
+                    onPress={() => {
+                      if (!wall.mirror) return startMirror();
+                      setMirrorSel(null);
+                      setMode("mirroring");
+                    }}
+                  >
+                    <Text style={styles.btnText}>
+                      {wall.mirror
+                        ? `Mirror layout · ${unpairedHolds.length ? `${unpairedHolds.length} unpaired` : "all paired"}`
+                        : "Mirror layout · off"}
+                    </Text>
                   </Pressable>
                 </View>
 

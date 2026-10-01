@@ -19,11 +19,48 @@ export interface Tick {
   comment: string;
   /** Who climbed it; null for an ascent logged on this phone before signing in. */
   userId: string | null;
+  /** Climbed as the mirrored problem, on a mirror layout. */
+  mirrored: boolean;
 }
 
 export const MAX_STARS = 3;
 
 export const isFlash = (t: Pick<Tick, "attempts">): boolean => t.attempts === 1;
+
+/**
+ * The earliest of these ascents, or of those climbed one way round. On a
+ * mirror layout the mirrored problem is a climb of its own, so each way round
+ * has its own first ascent, and its own flash.
+ */
+export function firstAscent<T extends Pick<Tick, "climbedAt" | "mirrored">>(
+  ticks: readonly T[],
+  mirrored?: boolean,
+): T | null {
+  let first: T | null = null;
+  for (const t of ticks) {
+    if (mirrored !== undefined && t.mirrored !== mirrored) continue;
+    if (!first || t.climbedAt < first.climbedAt) first = t;
+  }
+  return first;
+}
+
+/**
+ * What my ascents of a problem add up to, as a few words. With a mirrored twin
+ * to climb, each way round is its own climb, with its own flash.
+ */
+export function myAscents(mine: readonly Tick[], twin: boolean): string {
+  const done = (mirrored?: boolean) => {
+    const first = firstAscent(mine, mirrored);
+    return first ? (isFlash(first) ? "flashed" : "ticked") : null;
+  };
+  if (!twin) return done() === "flashed" ? "you flashed it" : "ticked";
+  const set = done(false);
+  const mirrored = done(true);
+  if (!mirrored) return `${set} as set, not yet mirrored`;
+  if (!set) return `${mirrored} mirrored, not yet as set`;
+  if (set === mirrored) return set === "flashed" ? "you flashed it both ways" : "ticked both ways";
+  return `ticked both ways, flashed ${set === "flashed" ? "as set" : "mirrored"}`;
+}
 
 /** Why a tick cannot be saved, as sentences for the user. Empty when it can. */
 export function validateTick(t: Pick<Tick, "attempts" | "grade" | "stars">): string[] {

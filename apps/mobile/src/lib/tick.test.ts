@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { averageStars, byAngle, gradeAt, isFlash, shortDate, validateTick } from "./tick";
+import {
+  averageStars,
+  byAngle,
+  firstAscent,
+  gradeAt,
+  isFlash,
+  myAscents,
+  shortDate,
+  type Tick,
+  validateTick,
+} from "./tick";
 
 const problem = { grade: 6, angle: 40 };
 const t = (angle: number, grade: number | null, stars: number | null = null) => ({ angle, grade, stars });
@@ -18,6 +28,29 @@ describe("validateTick", () => {
   it("calls one attempt a flash", () => {
     expect(isFlash({ attempts: 1 })).toBe(true);
     expect(isFlash({ attempts: 2 })).toBe(false);
+  });
+});
+
+describe("first ascents and flashes", () => {
+  const a = (climbedAt: number, attempts: number, mirrored = false) =>
+    ({ id: `${climbedAt}`, climbedAt, attempts, mirrored }) as Tick;
+
+  it("finds the first ascent, overall or one way round", () => {
+    const ticks = [a(5, 2), a(3, 1, true), a(9, 1)];
+    expect(firstAscent(ticks)?.climbedAt).toBe(3);
+    expect(firstAscent(ticks, false)?.climbedAt).toBe(5);
+    expect(firstAscent(ticks, true)?.climbedAt).toBe(3);
+    expect(firstAscent([a(1, 1)], true)).toBeNull();
+  });
+
+  it("sums up my ascents, each way round on its own with a twin", () => {
+    expect(myAscents([a(1, 1)], false)).toBe("you flashed it");
+    expect(myAscents([a(1, 2), a(2, 1)], false)).toBe("ticked");
+    expect(myAscents([a(1, 1)], true)).toBe("flashed as set, not yet mirrored");
+    expect(myAscents([a(1, 2, true)], true)).toBe("ticked mirrored, not yet as set");
+    expect(myAscents([a(1, 1), a(2, 1, true)], true)).toBe("you flashed it both ways");
+    expect(myAscents([a(1, 3), a(2, 1, true)], true)).toBe("ticked both ways, flashed mirrored");
+    expect(myAscents([a(1, 3), a(2, 2, true)], true)).toBe("ticked both ways");
   });
 });
 

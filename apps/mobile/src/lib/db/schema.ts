@@ -147,6 +147,13 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE wall ADD COLUMN role_colors TEXT NOT NULL DEFAULT '{}';
   `,
+
+  /* 6: mirror layouts. Which hold mirrors which, as JSON (null: not a mirror
+   * layout); and which way round each ascent was climbed. */
+  `
+  ALTER TABLE wall ADD COLUMN mirror TEXT;
+  ALTER TABLE tick ADD COLUMN mirrored INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

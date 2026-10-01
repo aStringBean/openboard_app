@@ -2,7 +2,9 @@
  * The problem catalogue as the list shows it: each problem summarised with
  * what its ascents say about it. Pure, so it can be tested in Node.
  */
-import { averageStars, gradeAt, isFlash, type Tick } from "./tick";
+import { hasTwin, type MirrorMap } from "./mirror";
+import type { Role } from "./problem";
+import { averageStars, firstAscent, gradeAt, isFlash, type Tick } from "./tick";
 
 export interface ProblemRow {
   id: string;
@@ -21,22 +23,29 @@ export interface ProblemSummary extends ProblemRow {
   consensus: number;
   stars: number | null;
   ascents: number;
+  /** By me. On a mirror layout, a problem with a mirrored twin is only ticked once climbed both ways. */
   ticked: boolean;
+  /** Ticked one way round but not yet the other. */
+  half: boolean;
+  /** My first ascent took one go; on a mirror layout, my first ascent each way round. */
   flashed: boolean;
 }
 
 export function summarise(
   problems: readonly ProblemRow[],
-  holds: readonly { problemId: string; holdId: number }[],
+  holds: readonly { problemId: string; holdId: number; role?: Role }[],
   ticks: readonly Tick[],
   /** Whose ticks make a problem "ticked": mine, plus any logged before signing in. */
   me: string | null = null,
+  /** The wall's hold pairs, on a mirror layout. */
+  mirror: MirrorMap | null = null,
 ): ProblemSummary[] {
-  const holdsOf = new Map<string, number[]>();
+  const holdsOf = new Map<string, { holdId: number; role: Role }[]>();
   for (const h of holds) {
+    const entry = { holdId: h.holdId, role: h.role ?? "hand" };
     const list = holdsOf.get(h.problemId);
-    if (list) list.push(h.holdId);
-    else holdsOf.set(h.problemId, [h.holdId]);
+    if (list) list.push(entry);
+    else holdsOf.set(h.problemId, [entry]);
   }
 
   const ticksOf = new Map<string, Tick[]>();
@@ -50,16 +59,26 @@ export function summarise(
     /* Grade and stars come from everyone's ascents; ticked and flashed are mine. */
     const all = ticksOf.get(p.id) ?? [];
     const mine = all.filter((t) => t.userId === null || t.userId === me);
-    /* A flash is a first ascent in one go; a one-go repeat is just a repeat. */
-    const first = mine.reduce<Tick | null>((a, t) => (!a || t.climbedAt < a.climbedAt ? t : a), null);
+    const problemHolds = holdsOf.get(p.id) ?? [];
+    /* Both ways round only where there is a distinct second way: not for a
+     * problem with an unpaired hold, nor one that is its own reflection. */
+    const bothWays = mirror !== null && hasTwin(problemHolds, mirror);
+    /* A flash is a first ascent in one go; a one-go repeat is just a repeat.
+     * Both ways round, each way is its own climb: flashed means flashed both. */
+    const firstSet = firstAscent(mine, false);
+    const firstMirrored = firstAscent(mine, true);
+    const flashedOne = (t: Tick | null) => t !== null && isFlash(t);
+    const normal = firstSet !== null;
+    const mirrored = firstMirrored !== null;
     return {
       ...p,
-      holdIds: holdsOf.get(p.id) ?? [],
+      holdIds: problemHolds.map((h) => h.holdId),
       consensus: gradeAt(p, all, p.angle) ?? p.grade,
       stars: averageStars(all),
       ascents: all.length,
-      ticked: mine.length > 0,
-      flashed: first !== null && isFlash(first),
+      ticked: bothWays ? normal && mirrored : mine.length > 0,
+      half: bothWays && normal !== mirrored,
+      flashed: bothWays ? flashedOne(firstSet) && flashedOne(firstMirrored) : flashedOne(firstAscent(mine)),
     };
   });
 }
