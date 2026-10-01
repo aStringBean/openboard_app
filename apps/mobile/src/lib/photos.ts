@@ -22,6 +22,14 @@ export async function keepPhoto(wallId: string, uri: string): Promise<string> {
   return to.uri;
 }
 
+/** Keeps a photo the app made, such as a straightened one, and returns its URI. */
+export function savePhoto(wallId: string, jpeg: Uint8Array): string {
+  const to = new File(wallDir(wallId), `${Date.now()}.jpg`);
+  to.create();
+  to.write(jpeg);
+  return to.uri;
+}
+
 export const photoStore: PhotoStore = {
   read: (uri) => new File(uri).bytes(),
   async download(url, wallId, name) {

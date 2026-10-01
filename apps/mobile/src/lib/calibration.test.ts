@@ -17,7 +17,11 @@ import {
   type Calibration,
   type WallHold,
   clearHolds,
+  straighten,
+  straighteningOf,
+  type Straightening,
 } from "./calibration";
+import type { Quad } from "./perspective";
 
 /** A calibration with detected holds at the given points. */
 function withDetected(points: [number, number][], snapEnabled = true): Calibration {
@@ -355,6 +359,77 @@ describe("hold dots", () => {
     expect(c.dotOpacity).toBe(1);
     const styled = { ...c, dotColor: "#000000", dotOpacity: 0.6 };
     expect(resetCalibration(styled)).toMatchObject({ dotColor: "#000000", dotOpacity: 0.6 });
+  });
+});
+
+describe("straighten", () => {
+  /* The board fills the middle of the photo, its top edge foreshortened. */
+  const corners: Quad = [
+    { x: 0.3, y: 0.2 },
+    { x: 0.7, y: 0.2 },
+    { x: 0.9, y: 0.8 },
+    { x: 0.1, y: 0.8 },
+  ];
+  const on = (c: Calibration, s: Omit<Straightening, "originalUri">, keep?: Set<number>) =>
+    straighten(c, { ...s, originalUri: c.straightening?.originalUri ?? c.photoUri! }, keep);
+
+  const photo = (): Calibration => {
+    let c = mergeDetections({ ...emptyCalibration(10), photoUri: "file:///raw.jpg", photoAspect: 0.75 }, [
+      { x: 0.3, y: 0.2 }, // the board's top-left corner
+      { x: 0.5, y: 0.5 },
+      { x: 0.02, y: 0.5 }, // off the board, to the left
+      { x: 0.98, y: 0.95 }, // off the board, bottom right
+    ]);
+    c = assignLed(c, 0, 0.98, 0.95);
+    return c;
+  };
+
+  it("moves holds into the straightened photo, and drops those off the board", () => {
+    const c = on(photo(), { corners, size: { w: 12, h: 10 }, resultUri: "file:///flat.jpg" });
+
+    expect(c.photoUri).toBe("file:///flat.jpg");
+    expect(c.photoAspect).toBeCloseTo(1.2);
+    expect(c.holds.map((h) => h.id)).toEqual([0, 1, 3]);
+    expect(c.holds[0]).toMatchObject({ x: 0, y: 0 });
+    /* Off the board but mapped to an LED: kept, on the edge. */
+    expect(c.holds[2]).toMatchObject({ led: 0, x: 1, y: 1 });
+  });
+
+  it("keeps a hold a problem uses, even off the board", () => {
+    const c = on(photo(), { corners, size: { w: 1, h: 1 }, resultUri: "file:///flat.jpg" }, new Set([2]));
+    expect(c.holds.find((h) => h.id === 2)).toMatchObject({ x: 0 });
+  });
+
+  it("straightening again starts from the photo as taken", () => {
+    const wider: Quad = [
+      { x: 0.2, y: 0.1 },
+      { x: 0.8, y: 0.1 },
+      { x: 0.95, y: 0.9 },
+      { x: 0.05, y: 0.9 },
+    ];
+    const once = on(photo(), { corners: wider, size: { w: 8, h: 12 }, resultUri: "file:///b.jpg" });
+    const twice = on(on(photo(), { corners, size: { w: 12, h: 10 }, resultUri: "file:///a.jpg" }), {
+      corners: wider,
+      size: { w: 8, h: 12 },
+      resultUri: "file:///b.jpg",
+    });
+
+    expect(twice.straightening!.originalUri).toBe("file:///raw.jpg");
+    /* The first, tighter crop dropped hold 2 and pinned hold 3 to its edge;
+     * the holds on both boards end up where one straightening puts them. */
+    expect(twice.holds.map((h) => h.id)).toEqual([0, 1, 3]);
+    for (const h of twice.holds.filter((h) => h.id < 2)) {
+      const o = once.holds.find((x) => x.id === h.id)!;
+      expect(h.x).toBeCloseTo(o.x, 9);
+      expect(h.y).toBeCloseTo(o.y, 9);
+    }
+  });
+
+  it("no longer applies once the photo is replaced", () => {
+    const c = on(photo(), { corners, size: { w: 1, h: 1 }, resultUri: "file:///flat.jpg" });
+    expect(straighteningOf(c)).not.toBeNull();
+    expect(straighteningOf({ ...c, photoUri: "file:///synced.jpg" })).toBeNull();
+    expect(resetCalibration(c).straightening).toEqual(c.straightening);
   });
 });
 

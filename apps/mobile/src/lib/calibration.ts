@@ -7,6 +7,8 @@
  */
 import { DEFAULT_SNAP_RADIUS, nearestHold } from "@openboard/hold-detect";
 
+import { apply, invert, squareToQuad, type Quad } from "./perspective";
+
 export interface WallHold {
   id: number;
   /** Normalised to the photo, 0..1, so positions survive any display size. */
@@ -65,6 +67,25 @@ export interface Calibration {
   dotColor: string;
   /** 0.2-1 */
   dotOpacity: number;
+  /** How the photo was straightened, if it was. See straighteningOf(). */
+  straightening: Straightening | null;
+}
+
+/**
+ * A photo squared up to the board: the four corners marked on the photo as
+ * taken, warped so the board fills the image at its real proportions.
+ *
+ * Kept on this phone only; other phones just get the straightened photo.
+ */
+export interface Straightening {
+  /** The photo as taken, kept so straightening again starts from it. */
+  originalUri: string;
+  /** The board's corners on it, normalised to it. */
+  corners: Quad;
+  /** The board's width and height, in any one unit: only the ratio counts. */
+  size: { w: number; h: number };
+  /** The straightened photo this produced. */
+  resultUri: string;
 }
 
 /** The app setting (Settings, Experimental) that turns on hold detection. */
@@ -98,6 +119,7 @@ export const emptyCalibration = (chainLength = 250): Calibration => ({
   elapsedMs: 0,
   dotColor: DOT_COLORS[0]!.color,
   dotOpacity: 1,
+  straightening: null,
 });
 
 /**
@@ -351,6 +373,7 @@ export function resetCalibration(c: Calibration, keep: Protected = NONE): Calibr
     ...emptyCalibration(c.chainLength),
     photoUri: c.photoUri,
     photoAspect: c.photoAspect,
+    straightening: c.straightening,
     snapEnabled: c.snapEnabled,
     dotColor: c.dotColor,
     dotOpacity: c.dotOpacity,
@@ -358,6 +381,48 @@ export function resetCalibration(c: Calibration, keep: Protected = NONE): Calibr
     /* Ids are never reused, even across a reset. */
     nextHoldId: c.nextHoldId,
   };
+}
+
+// --------------------------------------------------------------- straighten
+
+/**
+ * The straightening behind the wall's photo, or null if the photo is as
+ * taken. Null too once the photo has been replaced — by Change photo here, or
+ * a new photo synced from another phone — since the corners were marked on
+ * a different picture.
+ */
+export const straighteningOf = (c: Calibration): Straightening | null =>
+  c.straightening && c.straightening.resultUri === c.photoUri ? c.straightening : null;
+
+/**
+ * Puts a newly straightened photo in place, moving every hold with it so LED
+ * mappings and problems survive.
+ *
+ * `s.originalUri` must be the photo the holds were placed against: the
+ * current photo itself if it is unstraightened, or the original behind it.
+ * Each hold is taken back to the original through the old corners, if any,
+ * then into the new photo through the new ones.
+ *
+ * Holds that land outside the board are dropped, unless they have an LED or a
+ * problem uses them: those are kept, pinned to the nearest edge.
+ */
+const EDGE = 1e-9;
+
+export function straighten(c: Calibration, s: Straightening, keep: Protected = NONE): Calibration {
+  const before = straighteningOf(c);
+  const toOriginal = before ? squareToQuad(before.corners) : null;
+  const toBoard = invert(squareToQuad(s.corners));
+
+  const holds: WallHold[] = [];
+  for (const h of c.holds) {
+    const p = apply(toBoard, toOriginal ? apply(toOriginal, h) : h);
+    /* A hold right on a corner must not fall off it to rounding. */
+    const inside = p.x > -EDGE && p.x < 1 + EDGE && p.y > -EDGE && p.y < 1 + EDGE;
+    if (!inside && h.led === null && !keep.has(h.id)) continue;
+    holds.push({ ...h, x: clamp01(p.x), y: clamp01(p.y) });
+  }
+
+  return { ...c, holds, photoUri: s.resultUri, photoAspect: s.size.w / s.size.h, straightening: s };
 }
 
 // ----------------------------------------------------------------- migration
