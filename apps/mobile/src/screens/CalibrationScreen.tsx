@@ -36,7 +36,6 @@ import {
   holdNear,
   mappedHolds,
   markNoHold,
-  median,
   mergeDetections,
   moveHold,
   nextUndecided,
@@ -63,11 +62,6 @@ const SAVE_DEBOUNCE_MS = 300;
 const REPEAT_DELAY_MS = 350;
 const REPEAT_MS = 60;
 
-const clock = (ms: number) => {
-  const t = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
-};
-
 export function CalibrationScreen() {
   const [cal, setCal] = useState<Calibration>(emptyCalibration());
   const [loaded, setLoaded] = useState(false);
@@ -85,7 +79,6 @@ export function CalibrationScreen() {
    * some walls it scatters dots everywhere. */
   const [detectOn, setDetectOn] = useState(false);
   const [dotsOpen, setDotsOpen] = useState(false);
-  const [, forceTick] = useState(0);
 
   /*
    * The latest calibration, readable synchronously. Every change goes through
@@ -170,21 +163,12 @@ export function CalibrationScreen() {
     return () => sub.remove();
   }, [flush]);
 
-  /* Ticks the elapsed clock while a sweep is running. */
-  useEffect(() => {
-    if (mode !== "sweeping") return;
-    const id = setInterval(() => forceTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [mode]);
-
   const mapped = useMemo(() => mappedHolds(cal), [cal]);
   const outliers = useMemo(() => findOutliers(mapped), [mapped]);
   const selected = selectedId === null ? null : (cal.holds.find((h) => h.id === selectedId) ?? null);
 
-  const elapsed = cal.elapsedMs + (sweepStartedAt.current ? Date.now() - sweepStartedAt.current : 0);
   const decided = decidedCount(cal);
   const remaining = Math.max(0, cal.chainLength - decided);
-  const med = median(cal.taps.slice(-20));
 
   // ---------------------------------------------------------------- sweep
 
@@ -616,9 +600,6 @@ export function CalibrationScreen() {
               <Stat label="Mapped" value={String(mapped.length)} />
               <Stat label="No hold" value={String(cal.noHold.length)} />
               <Stat label="Left" value={String(remaining)} />
-              <Stat label="Median" value={med === null ? "—" : `${(med / 1000).toFixed(2)}s`} />
-              <Stat label="Elapsed" value={clock(elapsed)} />
-              <Stat label="Projected" value={med === null ? "—" : clock(elapsed + med * remaining)} warn />
             </View>
 
             <View style={styles.row}>
@@ -786,11 +767,11 @@ function NudgeButton({
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, warn && { color: theme.warn }]}>{value}</Text>
+      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }

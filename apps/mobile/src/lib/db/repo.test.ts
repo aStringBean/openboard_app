@@ -155,6 +155,14 @@ describe("calibration", () => {
 
     expect((await loadCalibration(db, WALL)).nextHoldId).toBe(3);
   });
+
+  it("starts a new wall with snap on, and fills it in for state saved without it", async () => {
+    await createWall(db, WALL, "Garage");
+    expect((await loadCalibration(db, WALL)).snapEnabled).toBe(true);
+
+    await db.run("UPDATE wall SET calibration = ? WHERE id = ?", [JSON.stringify({ chainLength: 10, nextHoldId: 0 }), WALL]);
+    expect(await loadCalibration(db, WALL)).toMatchObject({ snapEnabled: true, dotColor: "#ffe600", dotOpacity: 1 });
+  });
 });
 
 describe("problems", () => {
