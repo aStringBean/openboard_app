@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View, Switch } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View, Switch } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -224,6 +224,8 @@ const styles = StyleSheet.create({
   },
   linkTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
   dim: { color: theme.dim, fontSize: 13 },
+  setBtn: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 18, justifyContent: "center" },
+  setBtnText: { color: "#06101f", fontSize: 15, fontWeight: "700" },
 });
 
 /* Brightness in steps a person can tell apart; the board takes 1-255. */
@@ -232,11 +234,21 @@ const toValue = (pct: number) => Math.max(1, Math.round((pct * 255) / 100));
 const nearestStep = (value: number) =>
   BRIGHTNESS_STEPS.reduce((a, b) => (Math.abs(toValue(b) - value) < Math.abs(toValue(a) - value) ? b : a));
 
+/* After the strip length is set, its last LED blinks this long, so it can be found on the wall. */
+const BLINK_LAST_MS = 5000;
+
 /** The connected board's own settings, when it speaks OpenBoard API 1. */
 function BoardSettings() {
   const conn = useConnection();
   const [read, setSettings] = useState<Awaited<ReturnType<typeof board.readSettings>>>(null);
   const [error, setError] = useState<string | null>(null);
+  /* The strip length as typed, or null to show the board's. */
+  const [typed, setTyped] = useState<string | null>(null);
+  const [blinking, setBlinking] = useState<number | null>(null);
+  /* Shown under the strip length field rather than at the end of the section. */
+  const [lengthError, setLengthError] = useState<string | null>(null);
+  /* Setting it again mid-blink starts a new blink; only the latest clears the note. */
+  const lengthSets = useRef(0);
   const openboard = conn.status === "connected" && conn.protocol === "openboard";
   /* Settings read from a board that has since gone mean nothing. */
   const settings = openboard ? read : null;
@@ -277,6 +289,32 @@ function BoardSettings() {
     }
   };
 
+  const maxLength = conn.info?.maxChainLength ?? null;
+  const length = typed ?? String(settings?.chainLength ?? "");
+
+  const setChainLength = async () => {
+    const n = Number(length);
+    if (!Number.isInteger(n) || n < 1 || (maxLength !== null && n > maxLength)) {
+      setLengthError(
+        `The strip length is a whole number of LEDs, from 1${maxLength !== null ? ` to ${maxLength}` : ""}.`,
+      );
+      return;
+    }
+    setLengthError(null);
+    const set = ++lengthSets.current;
+    try {
+      await board.setChainLength(n);
+      setSettings(await board.readSettings());
+      setTyped(null);
+      setBlinking(n);
+      await board.blink(n - 1, { r: 255, g: 255, b: 255 }, BLINK_LAST_MS);
+    } catch (err) {
+      setLengthError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (set === lengthSets.current) setBlinking(null);
+    }
+  };
+
   const fw = conn.info?.firmware;
 
   return (
@@ -295,6 +333,27 @@ function BoardSettings() {
           onChange={(p) => void setBrightness(p)}
         />
       ) : null}
+      <Text style={styles.label}>Strip length</Text>
+      {settings ? (
+        <View style={styles.rangeRow}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            keyboardType="number-pad"
+            value={length}
+            onChangeText={setTyped}
+            onSubmitEditing={() => void setChainLength()}
+          />
+          <Pressable style={styles.setBtn} onPress={() => void setChainLength()}>
+            <Text style={styles.setBtnText}>Set</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {lengthError ? <Text style={[styles.dim, { color: theme.danger }]}>{lengthError}</Text> : null}
+      <Text style={styles.dim}>
+        {blinking !== null
+          ? `LED ${blinking}, the last, is blinking white.`
+          : `How many LEDs the board drives${maxLength !== null ? `, up to ${maxLength}` : ""}. Setting it blinks the last one for ${BLINK_LAST_MS / 1000} seconds, to check it is the end of the strip.`}
+      </Text>
       {settings ? (
         <Text style={styles.dim}>
           Power limit: a {settings.powerSupplyW} W supply, {settings.powerHeadroomPct}% of it for the LEDs. The board

@@ -204,8 +204,17 @@ export async function disconnect(): Promise<void> {
 
 export const isConnected = (): boolean => device !== null;
 
-/** Writes one whole frame. Calls are serialised so packets cannot interleave. */
+/* Bumped by every frame sent, so a blink in progress knows to stop. */
+let blinkRun = 0;
+const BLINK_HALF_MS = 250;
+
+/** Writes one whole frame, ending any blink. Calls are serialised so packets cannot interleave. */
 export function send(leds: readonly Led[]): Promise<unknown> {
+  blinkRun++;
+  return sendFrame(leds);
+}
+
+function sendFrame(leds: readonly Led[]): Promise<unknown> {
   if (session) {
     return session.showFrame(leds).catch((err) => console.warn("[board] send failed", err));
   }
@@ -236,6 +245,22 @@ export const lightOne = (pos: number, colour: { r: number; g: number; b: number 
 
 export const blank = () => send([]);
 
+/**
+ * Blinks one LED, twice a second, then turns the strip off: to find it on the
+ * wall. Any frame sent meanwhile, such as a problem being opened, ends the
+ * blink and is left showing.
+ */
+export async function blink(pos: number, colour: { r: number; g: number; b: number }, ms: number): Promise<void> {
+  const run = ++blinkRun;
+  const until = Date.now() + ms;
+  for (let on = true; Date.now() < until; on = !on) {
+    if (run !== blinkRun) return;
+    await sendFrame(on ? [{ pos, ...colour }] : []);
+    await new Promise((resolve) => setTimeout(resolve, BLINK_HALF_MS));
+  }
+  if (run === blinkRun) await sendFrame([]);
+}
+
 // ------------------------------------------------ OpenBoard settings
 
 /** The board's settings, or null when the board does not speak OpenBoard API 1. */
@@ -247,4 +272,10 @@ export async function readSettings(): Promise<Settings | null> {
 export async function setBrightness(value: number): Promise<void> {
   if (!session) throw new Error("Brightness can only be set on a board in OpenBoard mode.");
   await session.setBrightness(value);
+}
+
+/** How many LEDs the board drives, 1 to its largest (INFO); saved on the board. Only for an OpenBoard board. */
+export async function setChainLength(length: number): Promise<void> {
+  if (!session) throw new Error("The strip length can only be set on a board in OpenBoard mode.");
+  await session.setChainLength(length);
 }
