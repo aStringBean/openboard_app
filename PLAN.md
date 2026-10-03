@@ -299,6 +299,18 @@ each packet to one write rather than chunking. Costs ~4 KB of RAM (40.6% used).
 This matters most in phase 3, when flicking through a problem list repaints the
 wall constantly.
 
+*Straightening (2026-10-01).* A photo taken at an angle shows the board as a
+skewed quad. Straighten marks its four corners and the board's real size
+(width × height, any unit) and warps the photo so the board fills an image of
+its true proportions: the homography from the unit square to the corners
+(`lib/perspective.ts`), drawn by Skia on the GPU, no new native code. Holds
+move with it, so LED mappings and problems survive. The original photo and
+corners stay on the phone, so straightening again starts from the photo as
+taken and warps never stack; other phones get only the straightened photo.
+Picking a photo goes straight to Straighten ("Use as is" skips it). Mirror
+layouts (phase 3) build on it: in a straightened photo the board's centre
+line is the photo's.
+
 **3 — Single-user catalog. DONE.** Create problems with hold roles, browse, filter,
 tick. Local only. Proves the data model.
 
@@ -357,6 +369,33 @@ limits assume the photo fits. Photos now fit whole (`lib/fit.ts`).
 The test calibration says 500 LEDs; the controller drives 250, and silently
 drops anything past the end. The firmware is write-only, so only the native
 mode in phase 5 (which reports chain length back) can close this.
+*Partly closed (2026-10-02):* in OpenBoard mode the app now reads and sets
+the board's strip length (phase 5). Still missing is a warning when the wall
+maps LEDs past it — exactly what hid the right half of mirrored problems on
+the 250-LED bench board (now set to 600).
+
+*Mirror layouts (2026-10-01).* Some boards are set so the right half is the
+left half reflected, hold for hold; on those every problem has a mirrored
+twin. Wall setup → Mirror layout pairs every hold with the one at its
+reflection (`lib/mirror.ts`). The centre line is fitted to the straightened
+photo — wherever the most holds find a partner — so neither a centre column
+nor marked start points are needed, and boards with or without a centre
+column work alike. On the SAC TB2 all 498 holds pair (240 pairs, 18 on the
+centre line). Unpaired holds are ringed; tap a hold to see its partner, tap
+another to pair it instead.
+
+- **Problems** stay as set. The problem page switches between As set and
+  Mirrored, showing and lighting the twin; a problem with an unpaired hold
+  says so, and a symmetric one is the same climb both ways round.
+- **Ticks** record which way round they were climbed. A problem with a twin
+  is ticked once climbed both ways, half ticked (½) after one, and Not yet
+  includes half-ticked problems. Each way round is its own climb with its
+  own flash: ⚡ means flashed both ways.
+- **Sync:** `walls.mirror` (the pairs) and `ticks.mirrored`.
+
+*Verified (2026-10-01)* on the Pixel against the bench board, with the
+firmware's pixel buffer read over J-Link: the mirrored problem lit exactly
+the partner holds, roles and colours kept, centre-line holds in place.
 
 **4 — Multi-user. DONE, against a local Supabase.** Auth, walls shared by QR
 code and invite link, members and roles, sync, comments, consensus grades
@@ -503,6 +542,32 @@ preview on the wall; walls store only the roles they change, synced with
 the wall. No-match stays magenta by default: cyan was tried on the wall, as a
 colour next to hand's blue, and magenta kept. Verified on the Pixel against
 the bench board.
+
+*Strip length from the app (2026-10-02).* Settings → Board sets the board's
+strip length over API 1 (setting `0x02`, 1 up to the largest `INFO`
+reports), saved on the board, then blinks the last LED white for 5 s so it
+can be checked against the end of the strip. Any other frame, such as a
+problem being opened, ends the blink. No firmware change.
+
+*ESP32-C6 (2026-10-03).* The firmware also runs on an ESP32-C6-DevKitC-1
+(`esp32c6_devkitc/esp32c6/hpcore`, on `dev`), beside the nRF52840 boards. No
+application code changed for it: the board files give the strip (WS2812 over
+I2S with DMA, on GPIO3), the mode button (BOOT) and the console (USB
+Serial/JTAG, logs on UART0), and it flashes over its own USB port, no probe.
+Espressif's Bluetooth controller is a binary blob (`west blobs fetch
+hal_espressif`), and with it the Zephyr host does the crypto, so the
+workspace pulls mbedtls too. On the hardware: every API 1 check passes, the
+ATT MTU is 247 as on the nRF, and the app lights problems on it. Why it is
+worth having: Wi-Fi (updates without a cable, control from a browser, which
+iOS cannot do over Bluetooth), a cheaper module, and flashing over USB for
+people building their own controllers. Not yet tested: many connections at
+once (allowed 10).
+
+*Found on the hardware:* Zephyr's ws2812-i2s driver always sends its whole
+buffer, sized for the devicetree's 1000 LEDs, whatever length it is given;
+the stale tail lit every LED in random colours. The firmware now hands it
+the whole buffer, dark past the chain. The ESP32-C6 would not enumerate
+through the J-Link's USB hub; plugged straight into the laptop it does.
 
 *Next, optionally:* gamma correction.
 
