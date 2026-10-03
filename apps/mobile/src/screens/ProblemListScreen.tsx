@@ -5,7 +5,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnglePicker } from "../components/Pickers";
 import { ProblemRow } from "../components/ProblemRow";
+import { StripWarning } from "../components/StripWarning";
 import { useFocusReload } from "../components/useFocusReload";
+import type { Calibration } from "../lib/calibration";
 import { activeFilterCount, applyFilter, DEFAULT_FILTER, SORTS, type ProblemSummary } from "../lib/catalog";
 import { loadCalibration, listProblems } from "../lib/db/repo";
 import { canEditWall, canSet } from "../lib/wall";
@@ -18,6 +20,7 @@ export function ProblemListScreen() {
   const router = useRouter();
   const [problems, setProblems] = useState<ProblemSummary[] | null>(null);
   const [wallReady, setWallReady] = useState(true);
+  const [holds, setHolds] = useState<Calibration["holds"] | null>(null);
 
   /* Reload whenever the screen comes back into view: a problem may have been
    * added, edited or deleted, or the wall set up, in the meantime. */
@@ -28,6 +31,7 @@ export function ProblemListScreen() {
         if (!live) return;
         setProblems(list);
         setWallReady(Boolean(cal.photoUri) && cal.holds.length > 0);
+        setHolds(cal.holds);
       });
       return () => {
         live = false;
@@ -84,6 +88,8 @@ export function ProblemListScreen() {
           <Text style={styles.toolText}>Settings</Text>
         </Pressable>
       </View>
+
+      <StripWarning holds={holds} />
 
       {adjustable ? (
         <View style={styles.angleBar}>

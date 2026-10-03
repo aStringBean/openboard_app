@@ -47,7 +47,15 @@ export type ConnectionState =
   | { status: "idle" }
   | { status: "scanning" }
   | { status: "connecting"; name: string }
-  | { status: "connected"; name: string; mtu: number; protocol: Protocol; info: Info | null }
+  | {
+      status: "connected";
+      name: string;
+      mtu: number;
+      protocol: Protocol;
+      info: Info | null;
+      /** How many LEDs the board drives; null when it cannot say (Aurora mode). */
+      chainLength: number | null;
+    }
   | { status: "error"; message: string };
 
 /*
@@ -185,8 +193,11 @@ export async function connect(timeoutMs = 15000): Promise<void> {
     });
 
     const info = protocol === "openboard" ? await openSession(withMtu) : null;
+    /* Read now, so every screen can tell when the wall uses LEDs past the end. */
+    const settings = session ? await session.getSettings().catch(() => null) : null;
+    const chainLength = settings?.chainLength ?? null;
 
-    onState({ status: "connected", name, mtu: withMtu.mtu ?? 23, protocol, info });
+    onState({ status: "connected", name, mtu: withMtu.mtu ?? 23, protocol, info, chainLength });
     await send([]);
   } catch (err) {
     const d = device;
@@ -265,7 +276,13 @@ export async function blink(pos: number, colour: { r: number; g: number; b: numb
 
 /** The board's settings, or null when the board does not speak OpenBoard API 1. */
 export async function readSettings(): Promise<Settings | null> {
-  return session ? session.getSettings() : null;
+  if (!session) return null;
+  const s = await session.getSettings();
+  /* It may have been changed from the board's console meanwhile. */
+  if (state.status === "connected" && state.chainLength !== s.chainLength) {
+    setState({ ...state, chainLength: s.chainLength });
+  }
+  return s;
 }
 
 /** Brightness 1-255; saved on the board. Only for an OpenBoard board. */
@@ -278,4 +295,5 @@ export async function setBrightness(value: number): Promise<void> {
 export async function setChainLength(length: number): Promise<void> {
   if (!session) throw new Error("The strip length can only be set on a board in OpenBoard mode.");
   await session.setChainLength(length);
+  if (state.status === "connected") setState({ ...state, chainLength: length });
 }

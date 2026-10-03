@@ -9,10 +9,11 @@ import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
 import { CommitTextInput } from "../components/CommitTextInput";
 import * as board from "../lib/board";
-import { getSetting, setSetting } from "../lib/db/repo";
+import { getSetting, loadCalibration, setSetting } from "../lib/db/repo";
 import { DETECT_SETTING } from "../lib/calibration";
 import { familyOf } from "../lib/boardName";
 import { gradeLabel, type GradeScale } from "../lib/grades";
+import { stripShortfall } from "../lib/strip";
 import {
   angleRange,
   canEditWall,
@@ -226,6 +227,10 @@ const styles = StyleSheet.create({
   dim: { color: theme.dim, fontSize: 13 },
   setBtn: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 18, justifyContent: "center" },
   setBtnText: { color: "#06101f", fontSize: 15, fontWeight: "700" },
+  warnRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  /* Beside text rather than a field, so it needs its own height. */
+  setBtnAlone: { paddingVertical: 10 },
+  warnText: { flex: 1, color: theme.warn },
 });
 
 /* Brightness in steps a person can tell apart; the board takes 1-255. */
@@ -239,7 +244,10 @@ const BLINK_LAST_MS = 5000;
 
 /** The connected board's own settings, when it speaks OpenBoard API 1. */
 function BoardSettings() {
+  const { db, wall } = useApp();
   const conn = useConnection();
+  /* The wall's holds, to tell when it uses LEDs past the end of the strip. */
+  const [holds, setHolds] = useState<{ led: number | null }[] | null>(null);
   const [read, setSettings] = useState<Awaited<ReturnType<typeof board.readSettings>>>(null);
   const [error, setError] = useState<string | null>(null);
   /* The strip length as typed, or null to show the board's. */
@@ -264,6 +272,14 @@ function BoardSettings() {
       live = false;
     };
   }, [openboard]);
+
+  useEffect(() => {
+    let live = true;
+    loadCalibration(db, wall.id).then((c) => live && setHolds(c.holds));
+    return () => {
+      live = false;
+    };
+  }, [db, wall.id]);
 
   if (conn.status !== "connected") return null;
 
@@ -292,8 +308,9 @@ function BoardSettings() {
   const maxLength = conn.info?.maxChainLength ?? null;
   const length = typed ?? String(settings?.chainLength ?? "");
 
-  const setChainLength = async () => {
-    const n = Number(length);
+  const short = settings && holds ? stripShortfall(holds, settings.chainLength) : null;
+
+  const setChainLength = async (n = Number(length)) => {
     if (!Number.isInteger(n) || n < 1 || (maxLength !== null && n > maxLength)) {
       setLengthError(
         `The strip length is a whole number of LEDs, from 1${maxLength !== null ? ` to ${maxLength}` : ""}.`,
@@ -349,6 +366,20 @@ function BoardSettings() {
         </View>
       ) : null}
       {lengthError ? <Text style={[styles.dim, { color: theme.danger }]}>{lengthError}</Text> : null}
+      {short ? (
+        <View style={styles.warnRow}>
+          <Text style={[styles.dim, styles.warnText]}>
+            This wall uses {short.needed} LEDs, so {short.holdsPast} hold{short.holdsPast > 1 ? "s are" : " is"} past
+            the end of the strip and can&apos;t light.
+            {maxLength !== null && short.needed > maxLength ? ` The board drives at most ${maxLength}.` : ""}
+          </Text>
+          {maxLength === null || short.needed <= maxLength ? (
+            <Pressable style={[styles.setBtn, styles.setBtnAlone]} onPress={() => void setChainLength(short.needed)}>
+              <Text style={styles.setBtnText}>Set to {short.needed}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       <Text style={styles.dim}>
         {blinking !== null
           ? `LED ${blinking}, the last, is blinking white.`

@@ -234,6 +234,9 @@ export function ProblemViewScreen() {
   const editable = canEditProblem(wall, problem.setterId, me);
   const mine = ticks.filter((t) => isMine(t.userId));
   const unpaired = pairs ? unpairedIn(problem.holds, pairs).length : 0;
+  /* Holds on LEDs past the end of the connected board's strip, which it drops. */
+  const stripEnd = conn.status === "connected" ? conn.chainLength : null;
+  const pastStrip = frame && stripEnd !== null ? frame.leds.filter((l) => l.pos >= stripEnd).length : 0;
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.root}>
@@ -312,6 +315,12 @@ export function ProblemViewScreen() {
             {frame && frame.unlit > 0 ? (
               <Text style={styles.note}>
                 {frame.unlit} hold{frame.unlit > 1 ? "s have" : " has"} no LED, so won&apos;t light.
+              </Text>
+            ) : null}
+            {pastStrip > 0 ? (
+              <Text style={styles.note}>
+                {pastStrip} hold{pastStrip > 1 ? "s are" : " is"} past the end of the board&apos;s strip ({stripEnd}{" "}
+                LEDs), so won&apos;t light. Set the strip length in Settings → Board.
               </Text>
             ) : null}
 
