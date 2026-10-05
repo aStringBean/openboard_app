@@ -7,7 +7,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
 import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
-import { Segmented, starsText } from "../components/Pickers";
+import { MirrorToggle } from "../components/MirrorToggle";
+import { starsText } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
 import { WallCanvas } from "../components/WallCanvas";
 import { useFocusReload } from "../components/useFocusReload";
@@ -325,14 +326,7 @@ export function ProblemViewScreen() {
             ) : null}
 
             {twin ? (
-              <Segmented<"set" | "mirrored">
-                options={[
-                  { value: "set", label: "As set" },
-                  { value: "mirrored", label: "Mirrored" },
-                ]}
-                value={showMirrored ? "mirrored" : "set"}
-                onChange={(v) => setMirrored(v === "mirrored")}
-              />
+              <MirrorToggle mirrored={showMirrored} onChange={setMirrored} />
             ) : pairs && unpaired > 0 ? (
               <Text style={styles.note}>
                 Can&apos;t be mirrored: {unpaired} of its holds {unpaired > 1 ? "have" : "has"} no mirror partner. Pair
