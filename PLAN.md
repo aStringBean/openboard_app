@@ -373,6 +373,13 @@ mode in phase 5 (which reports chain length back) can close this.
 the board's strip length (phase 5). Still missing is a warning when the wall
 maps LEDs past it — exactly what hid the right half of mirrored problems on
 the 250-LED bench board (now set to 600).
+*Closed (2026-10-03),* for boards in OpenBoard mode: the app reads the strip
+length on connecting and warns where it matters. The problem list shows a
+banner with how many holds can't light (tap for Settings); the problem page
+says how many of this problem's holds, as shown, are past the end; and
+Settings → Board offers "Set to N", N being the wall's highest LED plus one.
+The arithmetic is `lib/strip.ts`. Boards in Aurora mode cannot report their
+strip length, so get no warning.
 
 *Mirror layouts (2026-10-01).* Some boards are set so the right half is the
 left half reflected, hold for hold; on those every problem has a mirrored
@@ -548,6 +555,11 @@ strip length over API 1 (setting `0x02`, 1 up to the largest `INFO`
 reports), saved on the board, then blinks the last LED white for 5 s so it
 can be checked against the end of the strip. Any other frame, such as a
 problem being opened, ends the blink. No firmware change.
+
+*Colour order from the app (2026-10-05).* Settings → Board sets RGB or GRB
+over API 1 (setting `0x03`), saved on the board; the firmware already saved
+it. Tapping either lights the first three LEDs red, green and blue for 5 s:
+if the first two come out the other way round, the other order is right.
 
 *ESP32-C6 (2026-10-03).* The firmware also runs on an ESP32-C6-DevKitC-1
 (`esp32c6_devkitc/esp32c6/hpcore`, on `dev`), beside the nRF52840 boards. No
