@@ -215,7 +215,7 @@ export async function disconnect(): Promise<void> {
 
 export const isConnected = (): boolean => device !== null;
 
-/* Bumped by every frame sent, so a blink in progress knows to stop. */
+/* Bumped by every frame sent, so a blink or timed frame in progress knows to stop. */
 let blinkRun = 0;
 const BLINK_HALF_MS = 250;
 
@@ -272,6 +272,17 @@ export async function blink(pos: number, colour: { r: number; g: number; b: numb
   if (run === blinkRun) await sendFrame([]);
 }
 
+/**
+ * Shows a frame for a while, then turns the strip off. Any frame sent
+ * meanwhile ends it early and is left showing.
+ */
+export async function showFor(leds: readonly Led[], ms: number): Promise<void> {
+  const run = ++blinkRun;
+  await sendFrame(leds);
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  if (run === blinkRun) await sendFrame([]);
+}
+
 // ------------------------------------------------ OpenBoard settings
 
 /** The board's settings, or null when the board does not speak OpenBoard API 1. */
@@ -289,6 +300,12 @@ export async function readSettings(): Promise<Settings | null> {
 export async function setBrightness(value: number): Promise<void> {
   if (!session) throw new Error("Brightness can only be set on a board in OpenBoard mode.");
   await session.setBrightness(value);
+}
+
+/** The order the strip's LEDs take their colours in; saved on the board. Only for an OpenBoard board. */
+export async function setColorOrder(order: "rgb" | "grb"): Promise<void> {
+  if (!session) throw new Error("The colour order can only be set on a board in OpenBoard mode.");
+  await session.setColorOrder(order);
 }
 
 /** How many LEDs the board drives, 1 to its largest (INFO); saved on the board. Only for an OpenBoard board. */

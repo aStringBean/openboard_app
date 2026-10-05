@@ -241,6 +241,13 @@ const nearestStep = (value: number) =>
 
 /* After the strip length is set, its last LED blinks this long, so it can be found on the wall. */
 const BLINK_LAST_MS = 5000;
+/* After the colour order is set, the first three LEDs show red, green and blue this long. */
+const ORDER_CHECK_MS = 5000;
+const ORDER_CHECK = [
+  { pos: 0, r: 255, g: 0, b: 0 },
+  { pos: 1, r: 0, g: 255, b: 0 },
+  { pos: 2, r: 0, g: 0, b: 255 },
+];
 
 /** The connected board's own settings, when it speaks OpenBoard API 1. */
 function BoardSettings() {
@@ -257,6 +264,8 @@ function BoardSettings() {
   const [lengthError, setLengthError] = useState<string | null>(null);
   /* Setting it again mid-blink starts a new blink; only the latest clears the note. */
   const lengthSets = useRef(0);
+  const [checkingOrder, setCheckingOrder] = useState(false);
+  const orderSets = useRef(0);
   const openboard = conn.status === "connected" && conn.protocol === "openboard";
   /* Settings read from a board that has since gone mean nothing. */
   const settings = openboard ? read : null;
@@ -332,6 +341,21 @@ function BoardSettings() {
     }
   };
 
+  const setColorOrder = async (order: "rgb" | "grb") => {
+    setError(null);
+    const set = ++orderSets.current;
+    try {
+      await board.setColorOrder(order);
+      setSettings(await board.readSettings());
+      setCheckingOrder(true);
+      await board.showFor(ORDER_CHECK, ORDER_CHECK_MS);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (set === orderSets.current) setCheckingOrder(false);
+    }
+  };
+
   const fw = conn.info?.firmware;
 
   return (
@@ -384,6 +408,22 @@ function BoardSettings() {
         {blinking !== null
           ? `LED ${blinking}, the last, is blinking white.`
           : `How many LEDs the board drives${maxLength !== null ? `, up to ${maxLength}` : ""}. Setting it blinks the last one for ${BLINK_LAST_MS / 1000} seconds, to check it is the end of the strip.`}
+      </Text>
+      <Text style={styles.label}>Colour order</Text>
+      {settings ? (
+        <Segmented<"rgb" | "grb">
+          options={[
+            { value: "rgb", label: "RGB" },
+            { value: "grb", label: "GRB" },
+          ]}
+          value={settings.colorOrder}
+          onChange={(order) => void setColorOrder(order)}
+        />
+      ) : null}
+      <Text style={styles.dim}>
+        {checkingOrder
+          ? "The first three LEDs are lit red, green, blue. If the first two are the other way round, choose the other order."
+          : `The order the strip takes its colours in, saved on the board. Tap either to light the first three LEDs red, green and blue for ${ORDER_CHECK_MS / 1000} seconds, to check.`}
       </Text>
       {settings ? (
         <Text style={styles.dim}>
