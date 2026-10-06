@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { BoardPicker } from "../src/components/BoardPicker";
 import { ConnectChip } from "../src/components/ConnectChip";
 import { AppProvider } from "../src/state/AppProvider";
 import { theme } from "../src/theme";
@@ -29,6 +30,7 @@ export default function RootLayout() {
                 headerRight: () => <ConnectChip />,
               }}
             />
+            <BoardPicker />
           </AppProvider>
         </KeyboardProvider>
       </SafeAreaProvider>

@@ -4,6 +4,7 @@ import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
+import { connectForWall } from "../components/BoardPicker";
 import { useConnection } from "../components/ConnectChip";
 import { AnglePicker, Segmented } from "../components/Pickers";
 import { useSession } from "../components/useSession";
@@ -14,6 +15,7 @@ import { DETECT_SETTING } from "../lib/calibration";
 import { familyOf } from "../lib/boardName";
 import { gradeLabel, type GradeScale } from "../lib/grades";
 import { stripShortfall } from "../lib/strip";
+import { boardNameProblem, NAME_MAX_BYTES } from "@openboard/openboard-protocol";
 import {
   angleRange,
   canEditWall,
@@ -249,6 +251,22 @@ const ORDER_CHECK = [
   { pos: 2, r: 0, g: 0, b: 255 },
 ];
 
+/** Every board in range to pick from, whichever this wall usually uses. */
+function ChooseBoard() {
+  const { db, wall } = useApp();
+  const conn = useConnection();
+
+  return (
+    <Pressable style={styles.link} onPress={() => void connectForWall(db, wall.id, true)}>
+      <Text style={styles.linkTitle}>Choose a board…</Text>
+      <Text style={styles.dim}>
+        {conn.status === "connected" ? "Switch to another board in range" : "Pick from every board in range"}. Or
+        long-press the connect button at the top of any screen.
+      </Text>
+    </Pressable>
+  );
+}
+
 /** The connected board's own settings, when it speaks OpenBoard API 1. */
 function BoardSettings() {
   const { db, wall } = useApp();
@@ -265,6 +283,9 @@ function BoardSettings() {
   /* Setting it again mid-blink starts a new blink; only the latest clears the note. */
   const lengthSets = useRef(0);
   const [checkingOrder, setCheckingOrder] = useState(false);
+  /* The board's name as typed, or null to show the board's own. */
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const orderSets = useRef(0);
   const openboard = conn.status === "connected" && conn.protocol === "openboard";
   /* Settings read from a board that has since gone mean nothing. */
@@ -290,12 +311,20 @@ function BoardSettings() {
     };
   }, [db, wall.id]);
 
-  if (conn.status !== "connected") return null;
+  if (conn.status !== "connected") {
+    return (
+      <>
+        <Text style={styles.section}>Board</Text>
+        <ChooseBoard />
+      </>
+    );
+  }
 
   if (!openboard) {
     return (
       <>
         <Text style={styles.section}>Board</Text>
+        <ChooseBoard />
         <Text style={styles.dim}>
           Connected in {familyOf(conn.name)} mode. For full colour and brightness control from here, switch
           the board to OpenBoard mode from its console: board setup openboard.
@@ -356,14 +385,59 @@ function BoardSettings() {
     }
   };
 
+  const canName = conn.info?.features.boardName ?? false;
+  const boardName = typedName ?? settings?.name ?? "";
+
+  const setBoardName = async () => {
+    const name = boardName.trim();
+    const problem = boardNameProblem(name);
+    if (problem) {
+      setNameError(problem);
+      return;
+    }
+    setNameError(null);
+    try {
+      await board.setBoardName(name);
+      setSettings(await board.readSettings());
+      setTypedName(null);
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const fw = conn.info?.firmware;
 
   return (
     <>
       <Text style={styles.section}>Board</Text>
+      <ChooseBoard />
       <Text style={styles.dim}>
         OpenBoard{fw ? ` firmware ${fw.major}.${fw.minor}.${fw.patch}` : ""}
         {settings ? ` · ${settings.chainLength} LEDs` : ""}
+      </Text>
+
+      <Text style={styles.label}>Board name</Text>
+      {canName && settings ? (
+        <View style={styles.rangeRow}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            value={boardName}
+            placeholder="No name"
+            placeholderTextColor={theme.dim}
+            onChangeText={setTypedName}
+            onSubmitEditing={() => void setBoardName()}
+            returnKeyType="done"
+          />
+          <Pressable style={styles.setBtn} onPress={() => void setBoardName()}>
+            <Text style={styles.setBtnText}>Set</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {nameError ? <Text style={[styles.dim, { color: theme.danger }]}>{nameError}</Text> : null}
+      <Text style={styles.dim}>
+        {canName
+          ? `Saved on the board and shown when connecting, so boards near each other can be told apart. Up to ${NAME_MAX_BYTES} characters (an accented letter counts as two); clear it to remove the name.`
+          : "Boards with firmware 1.2.0 or later can be given a name, to tell them apart when connecting."}
       </Text>
 
       <Text style={styles.label}>Brightness</Text>

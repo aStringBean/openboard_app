@@ -11,7 +11,6 @@ import {
 import {
   chunk,
   CommandTimeout,
-  DEVICE_NAME as OPENBOARD_NAME,
   NUS_TX_CHAR_UUID,
   Session,
   type Info,
@@ -47,14 +46,20 @@ export type ConnectionState =
   | { status: "idle" }
   | { status: "scanning" }
   | { status: "connecting"; name: string }
+  /* Several boards in range, or not the one this wall used: the user picks. */
+  | { status: "choosing"; boards: FoundBoard[]; preferred: string | null }
   | {
       status: "connected";
+      /** The board's Bluetooth id: on Android, its address. */
+      id: string;
       name: string;
       mtu: number;
       protocol: Protocol;
       info: Info | null;
       /** How many LEDs the board drives; null when it cannot say (Aurora mode). */
       chainLength: number | null;
+      /** The board's own name; "" when it has none or cannot have one. */
+      boardName: string;
     }
   | { status: "error"; message: string };
 
@@ -101,26 +106,53 @@ export async function requestPermissions(): Promise<boolean> {
  * advertises an Aurora service UUID it does not register in GATT, so
  * matching is on the name.
  */
-function scan(timeoutMs: number): Promise<Device> {
+/* What the board advertises now. Android keeps a device's name from earlier
+ * sightings, so a renamed board is read from its advertisement first. */
+const advertisedName = (d: Device): string => d.localName ?? d.name ?? "";
+
+/** A board heard while scanning, as the picker lists it. */
+export interface FoundBoard {
+  id: string;
+  /** What it advertises: "OpenBoard Garage wall", "Kilter Board#1@3" and so on. */
+  name: string;
+  /** Signal strength in dBm: higher is nearer. Null if the phone did not say. */
+  rssi: number | null;
+}
+
+/* Once one board is heard, how much longer to listen so every board in range
+ * is: they advertise many times a second. */
+const SETTLE_MS = 2000;
+
+/* The boards the last scan found, by id, for chooseBoard. */
+let candidates = new Map<string, Device>();
+
+/**
+ * Every board in range: listens until SETTLE_MS after the first is heard, or
+ * the timeout if none is. Stops at once on hearing `stopAt`, the board this
+ * wall used last.
+ */
+function scan(timeoutMs: number, stopAt: string | null): Promise<Map<string, Device>> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const found = new Map<string, Device>();
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    let done = false;
+    const end = (err?: unknown) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (settle) clearTimeout(settle);
       manager.stopDeviceScan();
-      reject(new Error("No board found. Is it powered, and not connected to something else?"));
-    }, timeoutMs);
+      if (err) reject(err);
+      else resolve(found);
+    };
+    const timer = setTimeout(() => end(), timeoutMs);
 
-    manager.startDeviceScan(null, { allowDuplicates: false }, (error, found) => {
-      if (error) {
-        clearTimeout(timer);
-        manager.stopDeviceScan();
-        reject(error);
-        return;
-      }
-
-      if (found?.name && protocolFor(found.name, OPENBOARD_NAME)) {
-        clearTimeout(timer);
-        manager.stopDeviceScan();
-        resolve(found);
-      }
+    manager.startDeviceScan(null, { allowDuplicates: true }, (error, d) => {
+      if (error) return end(error);
+      if (!d || !protocolFor(advertisedName(d))) return;
+      found.set(d.id, d);
+      if (d.id === stopAt) return end();
+      settle ??= setTimeout(() => end(), SETTLE_MS);
     });
   });
 }
@@ -161,20 +193,71 @@ function forget() {
   device = null;
 }
 
-export async function connect(timeoutMs = 15000): Promise<void> {
-  const onState = setState;
-  if (state.status === "scanning" || state.status === "connecting") return;
+/**
+ * Finds a board and connects to it. `prefer` is the board this wall used
+ * last: found, it is taken at once. Otherwise the only board in range is taken
+ * when the wall has none yet; anything else (several boards, or only boards
+ * that are not this wall's) waits in "choosing" for chooseBoard or
+ * cancelChoice. A board other than the wall's is never taken without asking.
+ *
+ * With `ask`, always asks: drops any board connected now, listens for every
+ * board in range, and shows them all, even one.
+ */
+export async function connect(
+  prefer: string | null = null,
+  { ask = false, timeoutMs = 15000 }: { ask?: boolean; timeoutMs?: number } = {},
+): Promise<void> {
+  if (state.status === "scanning" || state.status === "connecting" || state.status === "choosing") return;
+  if (ask && state.status === "connected") await disconnect();
 
   try {
     if (!(await requestPermissions())) {
-      onState({ status: "error", message: "Bluetooth permission denied" });
+      setState({ status: "error", message: "Bluetooth permission denied" });
       return;
     }
 
-    onState({ status: "scanning" });
-    const found = await scan(timeoutMs);
-    const name = found.name ?? "board";
-    const protocol = protocolFor(name, OPENBOARD_NAME)!;
+    setState({ status: "scanning" });
+    candidates = await scan(timeoutMs, ask ? null : prefer);
+  } catch (err) {
+    setState({ status: "error", message: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+
+  if (candidates.size === 0) {
+    setState({ status: "error", message: "No board found. Is it powered, and not connected to something else?" });
+    return;
+  }
+
+  if (!ask) {
+    const preferred = prefer ? candidates.get(prefer) : undefined;
+    if (preferred) return connectTo(preferred);
+    if (candidates.size === 1 && !prefer) return connectTo([...candidates.values()][0]!);
+  }
+
+  const boards = [...candidates.values()]
+    .map((d) => ({ id: d.id, name: advertisedName(d), rssi: d.rssi ?? null }))
+    .sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999));
+  setState({ status: "choosing", boards, preferred: prefer });
+}
+
+/** Connects to a board from the picker. */
+export async function chooseBoard(id: string): Promise<void> {
+  const found = candidates.get(id);
+  if (state.status !== "choosing" || !found) return;
+  await connectTo(found);
+}
+
+/** Closes the picker without connecting. */
+export function cancelChoice(): void {
+  if (state.status === "choosing") setState({ status: "idle" });
+}
+
+async function connectTo(found: Device): Promise<void> {
+  const onState = setState;
+
+  try {
+    const name = advertisedName(found);
+    const protocol = protocolFor(name)!;
 
     onState({ status: "connecting", name });
 
@@ -196,8 +279,18 @@ export async function connect(timeoutMs = 15000): Promise<void> {
     /* Read now, so every screen can tell when the wall uses LEDs past the end. */
     const settings = session ? await session.getSettings().catch(() => null) : null;
     const chainLength = settings?.chainLength ?? null;
+    const boardName = settings?.name ?? "";
 
-    onState({ status: "connected", name, mtu: withMtu.mtu ?? 23, protocol, info, chainLength });
+    onState({
+      status: "connected",
+      id: withMtu.id,
+      name,
+      mtu: withMtu.mtu ?? 23,
+      protocol,
+      info,
+      chainLength,
+      boardName,
+    });
     await send([]);
   } catch (err) {
     const d = device;
@@ -290,8 +383,8 @@ export async function readSettings(): Promise<Settings | null> {
   if (!session) return null;
   const s = await session.getSettings();
   /* It may have been changed from the board's console meanwhile. */
-  if (state.status === "connected" && state.chainLength !== s.chainLength) {
-    setState({ ...state, chainLength: s.chainLength });
+  if (state.status === "connected" && (state.chainLength !== s.chainLength || state.boardName !== s.name)) {
+    setState({ ...state, chainLength: s.chainLength, boardName: s.name });
   }
   return s;
 }
@@ -306,6 +399,13 @@ export async function setBrightness(value: number): Promise<void> {
 export async function setColorOrder(order: "rgb" | "grb"): Promise<void> {
   if (!session) throw new Error("The colour order can only be set on a board in OpenBoard mode.");
   await session.setColorOrder(order);
+}
+
+/** The board's name, "" to clear it; saved on the board, and advertised. Only for an OpenBoard board. */
+export async function setBoardName(name: string): Promise<void> {
+  if (!session) throw new Error("A board can only be named in OpenBoard mode.");
+  await session.setBoardName(name);
+  if (state.status === "connected") setState({ ...state, boardName: name });
 }
 
 /** How many LEDs the board drives, 1 to its largest (INFO); saved on the board. Only for an OpenBoard board. */
