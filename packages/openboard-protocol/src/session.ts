@@ -6,6 +6,7 @@ import {
   encodeSetBrightness,
   encodeSetChainLength,
   encodeSetColorOrder,
+  encodeSetBoardName,
   type Led,
 } from "./encode.js";
 import { PacketReader } from "./envelope.js";
@@ -118,6 +119,11 @@ export class Session {
 
   setColorOrder(order: "rgb" | "grb"): Promise<void> {
     return this.request(0x03, (id) => encodeSetColorOrder(id, order)).then((r) => this.ok(r));
+  }
+
+  /** "" clears it. Throws, before sending, for a name the board would refuse. */
+  setBoardName(name: string): Promise<void> {
+    return this.request(0x03, (id) => encodeSetBoardName(id, name)).then((r) => this.ok(r));
   }
 
   /** Sends a whole frame; resolves with its frame id once written. */

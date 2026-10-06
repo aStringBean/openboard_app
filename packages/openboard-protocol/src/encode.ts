@@ -1,6 +1,7 @@
 import { MAX_POS, MAX_RECORDS, MSG, OPCODE, RECORD_LEN, SETTING } from "./constants.js";
 import { pack } from "./envelope.js";
 import { OpenBoardProtocolError } from "./errors.js";
+import { boardNameProblem, utf8Encode } from "./name.js";
 
 /** One lit LED: position from the controller, and full-scale RGB. */
 export interface Led {
@@ -88,4 +89,11 @@ export function encodeSetChainLength(requestId: number, length: number): Uint8Ar
 
 export function encodeSetColorOrder(requestId: number, order: "rgb" | "grb"): Uint8Array {
   return command(requestId, OPCODE.setSetting, [SETTING.colorOrder, order === "grb" ? 1 : 0]);
+}
+
+/** The board's name, "" to clear it. Throws for a name the board would refuse. */
+export function encodeSetBoardName(requestId: number, name: string): Uint8Array {
+  const problem = boardNameProblem(name);
+  if (problem) throw new OpenBoardProtocolError(problem);
+  return command(requestId, OPCODE.setSetting, [SETTING.boardName, ...utf8Encode(name)]);
 }

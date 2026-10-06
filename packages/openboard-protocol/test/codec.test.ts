@@ -3,6 +3,7 @@ import {
   encodeFrame,
   encodeSetBrightness,
   encodeSetChainLength,
+  encodeSetBoardName,
   encodeSetColorOrder,
   MSG,
   OpenBoardProtocolError,
@@ -46,6 +47,12 @@ describe("commands", () => {
   it("encode their settings", () => {
     expect(toHex(unpack(encodeSetColorOrder(4, "grb")))).toBe("B8 04 03 03 01");
     expect(toHex(unpack(encodeSetColorOrder(4, "rgb")))).toBe("B8 04 03 03 00");
+    expect(toHex(unpack(encodeSetBoardName(5, "Wall")))).toBe("B8 05 03 05 57 61 6C 6C");
+    expect(toHex(unpack(encodeSetBoardName(5, "")))).toBe("B8 05 03 05");
+    /* "é" is two bytes. */
+    expect(toHex(unpack(encodeSetBoardName(5, "é")))).toBe("B8 05 03 05 C3 A9");
+    expect(() => encodeSetBoardName(5, "Twenty bytes exactly")).toThrow(/at most 19 characters/);
+    expect(() => encodeSetBoardName(5, " Wall")).toThrow(/space/);
     expect(toHex(unpack(encodeSetChainLength(5, 1000)))).toBe("B8 05 03 02 E8 03");
   });
 
@@ -68,7 +75,15 @@ describe("decodeMessage", () => {
       powerSupplyW: 200,
       powerHeadroomPct: 80,
       gamma: false,
+      name: "",
     });
+  });
+
+  it("decodes the board's name from SETTINGS, from 1.2.0", () => {
+    /* "Garage wall": 11 bytes after the length. */
+    const named = hex("B9 04 09 FF FA 00 01 06 C8 00 50 00 0B 47 61 72 61 67 65 20 77 61 6C 6C");
+    expect(decodeMessage(named)).toMatchObject({ kind: "settings", name: "Garage wall" });
+    expect(decodeMessage(hex("B9 04 09 FF FA 00 01 06 C8 00 50 00 00"))).toMatchObject({ name: "" });
   });
 
   it("decodes FRAME_DROPPED with its reason", () => {

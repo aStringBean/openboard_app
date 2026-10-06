@@ -3,7 +3,15 @@
  * The firmware's tests/openboard checks the same bytes, so the two sides
  * cannot drift apart unnoticed.
  */
-import { decodeMessage, encodeFrame, encodeGetInfo, encodeSetBrightness, encodeSetChainLength, unpack } from "../src/index.js";
+import {
+  decodeMessage,
+  encodeFrame,
+  encodeGetInfo,
+  encodeSetBoardName,
+  encodeSetBrightness,
+  encodeSetChainLength,
+  unpack,
+} from "../src/index.js";
 import { hex, toHex } from "./helpers.js";
 
 describe("the spec's worked examples", () => {
@@ -38,7 +46,7 @@ describe("the spec's worked examples", () => {
       apiVersion: 1,
       firmware: { major: 1, minor: 1, patch: 0 },
       maxChainLength: 1000,
-      features: { frames: true, settings: true, frameEvents: true, powerLimit: true, gamma: false },
+      features: { frames: true, settings: true, frameEvents: true, powerLimit: true, gamma: false, boardName: false },
       boardType: "openboard",
       maxRecordsPerPacket: 50,
     });
@@ -47,6 +55,11 @@ describe("the spec's worked examples", () => {
   it("set brightness to 128, and OK", () => {
     expect(toHex(encodeSetBrightness(2, 128))).toBe("01 05 C1 02 B8 02 03 01 80 03");
     expect(decodeMessage(unpack(hex("01 03 43 02 B9 01 02 03")))).toEqual({ kind: "ok", requestId: 2 });
+  });
+
+  it("name the board Garage, and OK", () => {
+    expect(toHex(encodeSetBoardName(4, "Garage"))).toBe("01 0A F4 02 B8 04 03 05 47 61 72 61 67 65 03");
+    expect(decodeMessage(unpack(hex("01 03 41 02 B9 01 04 03")))).toEqual({ kind: "ok", requestId: 4 });
   });
 
   it("set the chain length to 250, and the ERROR had it been too long", () => {

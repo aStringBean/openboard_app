@@ -29,9 +29,11 @@ export {
   encodeGetSettings,
   encodeSetBrightness,
   encodeSetChainLength,
+  encodeSetBoardName,
   encodeSetColorOrder,
   type Led,
 } from "./encode.js";
+export { boardNameFromAdvertised, boardNameProblem, NAME_MAX_BYTES, utf8Decode, utf8Encode } from "./name.js";
 export { decodeMessage, type Info, type Message, type Settings } from "./decode.js";
 export {
   CommandError,

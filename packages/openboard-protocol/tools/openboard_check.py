@@ -4,7 +4,9 @@ Checks a board in OpenBoard mode against OpenBoard API 1, over BLE.
 
 Encodes its own packets from the spec (the firmware's
 docs/openboard-api-1.md), independently of the app's encoder, and checks
-every reply. Leaves the board's brightness as it found it and the strip dark.
+every reply. Leaves the board's brightness and name as it found them, and
+the strip dark. Finds a board advertising "OpenBoard" or "OpenBoard <name>";
+with several in range, pick one with --address.
 
     npm run check [-- --address XX:..]  (in packages/openboard-protocol)
     npm run check -- --aurora-mode
@@ -104,6 +106,7 @@ def check(what: str, ok: bool, detail: str = ""):
 
 
 async def run(board: Board, look: float):
+    """The API 1 checks. Returns whether the board takes a name, and its name now."""
     le16 = lambda b, i: b[i] | (b[i + 1] << 8)
 
     print("GET_INFO")
@@ -114,14 +117,18 @@ async def run(board: Board, look: float):
           f"features 0x{le16(r, 9):04x}, board type {r[11]}, {r[12]} records/packet")
     check("board type OPENBOARD (6)", r[11] == 6)
     check("50 records per packet", r[12] == 50)
-    check("frames, settings, events, power limit; no gamma", le16(r, 9) == 0x000F)
+    features = le16(r, 9)
+    check("frames, settings, events, power limit; no gamma", features & 0x1F == 0x0F)
+    names = bool(features & 0x20)
+    print(f"       board names {'supported' if names else 'not supported (firmware before 1.2.0)'}")
 
     print("GET_SETTINGS")
     s = await board.command(0x02)
     check("SETTINGS reply", s[1] == SETTINGS, s.hex())
     brightness, chain = s[3], le16(s, 4)
+    old_name = bytes(s[13 : 13 + s[12]]) if len(s) > 12 else b""
     print(f"       brightness {brightness}, chain {chain}, order {'grb' if s[6] else 'rgb'}, "
-          f"supply {le16(s, 8)} W, headroom {s[10]} %, gamma {s[11]}")
+          f"supply {le16(s, 8)} W, headroom {s[10]} %, gamma {s[11]}, name {old_name.decode(errors='replace')!r}")
 
     print("SET_SETTING")
     r = await board.command(0x03, bytes([0x01, 77]))
@@ -152,7 +159,8 @@ async def run(board: Board, look: float):
           f"green-yellow, gold, blue, crimson ({look:.0f} s)")
     await asyncio.sleep(look)
 
-    leds = [(i, 0, 0, 255 - i) for i in range(chain)]
+    # Fades 255 to about 55 along the strip, whatever its length.
+    leds = [(i, 0, 0, 255 - i * 200 // chain) for i in range(chain)]
     packets = frame_packets(2, leds)
     for p in packets:
         await board.write(p)
@@ -182,6 +190,7 @@ async def run(board: Board, look: float):
     await board.write(frame_packets(99, [])[0])
     r = await board.reply()
     check("an empty frame turns the strip off", r[1] == SHOWN and r[2] == 99 and le16(r, 3) == 0, r.hex())
+    return names, old_name
 
 
 async def wrong_id(board: Board):
@@ -208,6 +217,33 @@ async def aurora_mode(board: Board):
     check("a frame gets no event", await board.silence(1.5))
 
 
+async def advertised_name(address: str, seconds: float = 6.0):
+    """What the board at this address advertises, scanning while connected to it."""
+    found = await BleakScanner.discover(timeout=seconds, return_adv=True)
+    for addr, (_d, adv) in found.items():
+        if addr.upper() == address.upper():
+            return adv.local_name
+    return None
+
+
+async def board_name(board: Board, address: str, old: bytes):
+    print("BOARD NAME (setting 0x05)")
+    name = "Check €"
+    r = await board.command(0x03, bytes([0x05]) + name.encode())
+    check(f"name {name!r} accepted", r[1] == OK, r.hex())
+    s = await board.command(0x02)
+    got = bytes(s[13 : 13 + s[12]]).decode(errors="replace") if len(s) > 12 else None
+    check("and read back", got == name, repr(got))
+    seen = await advertised_name(address)
+    check(f"advertised as 'OpenBoard {name}'", seen == f"OpenBoard {name}", repr(seen))
+    for bad, code, what in ((b"tab\there", 0x03, "a control character"), (b" lead", 0x03, "a space at the start"),
+                            (b"x" * 20, 0x02, "20 bytes"), (b"caf\xc3", 0x03, "broken UTF-8")):
+        r = await board.command(0x03, bytes([0x05]) + bad)
+        check(f"{what} refused", r[1] == ERROR and r[4] == code, r.hex())
+    r = await board.command(0x03, bytes([0x05]) + old)
+    check(f"name restored to {old.decode(errors='replace')!r}", r[1] == OK, r.hex())
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--address")
@@ -223,8 +259,12 @@ async def main():
                   "Decoy Board#1@3", "Grasshopper Board#1@3"}
                  if args.aurora_mode else {"OpenBoard"})
         print(f"scanning {args.timeout:.0f}s for {' or '.join(sorted(names))}...", file=sys.stderr)
-        dev = await BleakScanner.find_device_by_filter(lambda d, _ad: d.name in names,
-                                                       timeout=args.timeout)
+
+        def wanted(d, ad):
+            n = ad.local_name or d.name or ""
+            return n in names or (not args.aurora_mode and n.startswith("OpenBoard "))
+
+        dev = await BleakScanner.find_device_by_filter(wanted, timeout=args.timeout)
         if dev is None:
             sys.exit(f"no board advertising as {' or '.join(sorted(names))}; is it free?")
         address = dev.address
@@ -236,7 +276,9 @@ async def main():
         if args.aurora_mode:
             await aurora_mode(board)
         else:
-            await run(board, args.look)
+            names, old_name = await run(board, args.look)
+            if names:
+                await board_name(board, address, old_name)
             await wrong_id(board)
             await board.write(frame_packets(100, [])[0])
             r = await board.reply()

@@ -5,7 +5,8 @@
 
 export const API_VERSION = 1;
 
-/** The name a board in OpenBoard mode advertises (section 2). */
+/** The name a board in OpenBoard mode advertises (section 2): this, or this, a
+ * space and the board's own name. See boardNameFromAdvertised. */
 export const DEVICE_NAME = "OpenBoard";
 
 /** First payload byte (section 4). */
@@ -56,12 +57,14 @@ export const ERROR_CODE = {
 
 export type ErrorCodeName = keyof typeof ERROR_CODE;
 
-/** Settings keys (section 8). Only the first three are writable over BLE. */
+/** Settings keys (section 8). Brightness, chain length, colour order and the
+ * board name are writable over BLE. */
 export const SETTING = {
   brightness: 0x01,
   chainLength: 0x02,
   colorOrder: 0x03,
   boardType: 0x04,
+  boardName: 0x05,
   powerSupply: 0x10,
   powerHeadroom: 0x11,
   gamma: 0x12,
@@ -74,6 +77,7 @@ export const FEATURE = {
   frameEvents: 1 << 2,
   powerLimit: 1 << 3,
   gamma: 1 << 4,
+  boardName: 1 << 5,
 } as const;
 
 /** FRAME_DROPPED reasons (section 7). */

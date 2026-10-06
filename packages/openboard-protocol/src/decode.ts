@@ -10,6 +10,7 @@ import {
   type ErrorCodeName,
 } from "./constants.js";
 import { OpenBoardProtocolError } from "./errors.js";
+import { utf8Decode } from "./name.js";
 
 export interface Info {
   apiVersion: number;
@@ -21,6 +22,8 @@ export interface Info {
     frameEvents: boolean;
     powerLimit: boolean;
     gamma: boolean;
+    /** The board takes a name (setting 0x05): firmware 1.2.0 on. */
+    boardName: boolean;
   };
   /** Always "openboard" from firmware that answers at all. */
   boardType: BoardType | "unknown";
@@ -35,6 +38,8 @@ export interface Settings {
   powerSupplyW: number;
   powerHeadroomPct: number;
   gamma: boolean;
+  /** "" when the board has none, or its firmware predates names. */
+  name: string;
 }
 
 /** Everything the board sends (section 7). */
@@ -88,6 +93,7 @@ export function decodeMessage(p: Uint8Array): Message {
           frameEvents: (f & FEATURE.frameEvents) !== 0,
           powerLimit: (f & FEATURE.powerLimit) !== 0,
           gamma: (f & FEATURE.gamma) !== 0,
+          boardName: (f & FEATURE.boardName) !== 0,
         },
         boardType: boardType(p[11]!),
         maxRecordsPerPacket: p[12]!,
@@ -105,6 +111,8 @@ export function decodeMessage(p: Uint8Array): Message {
         powerSupplyW: u16(8),
         powerHeadroomPct: p[10]!,
         gamma: p[11] !== 0,
+        /* Appended in 1.2.0: a length, then that many bytes. */
+        name: p.length > 12 ? utf8Decode(p.subarray(13, 13 + p[12]!)) : "",
       };
     case REPLY.frameShown:
       need(8, "FRAME_SHOWN");
