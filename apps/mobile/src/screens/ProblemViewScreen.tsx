@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useConnection } from "../components/ConnectChip";
 import { LiftAboveKeyboard } from "../components/LiftAboveKeyboard";
+import { LightButton } from "../components/LightButton";
 import { MirrorToggle } from "../components/MirrorToggle";
 import { starsText } from "../components/Pickers";
 import { useFitCanvas } from "../components/useFitCanvas";
@@ -325,16 +326,22 @@ export function ProblemViewScreen() {
               </Text>
             ) : null}
 
-            {twin ? (
-              <MirrorToggle mirrored={showMirrored} onChange={setMirrored} />
-            ) : pairs && unpaired > 0 ? (
-              <Text style={styles.note}>
-                Can&apos;t be mirrored: {unpaired} of its holds {unpaired > 1 ? "have" : "has"} no mirror partner. Pair
-                {unpaired > 1 ? " them" : " it"} in Wall setup.
-              </Text>
-            ) : pairs ? (
-              <Text style={styles.dim}>Symmetric: the same climb both ways round.</Text>
-            ) : null}
+            {/* Which way round on the left; lighting it again on the right. */}
+            <View style={styles.viewRow}>
+              {twin ? (
+                <MirrorToggle mirrored={showMirrored} onChange={setMirrored} />
+              ) : pairs && unpaired > 0 ? (
+                <Text style={[styles.note, styles.viewRowText]}>
+                  Can&apos;t be mirrored: {unpaired} of its holds {unpaired > 1 ? "have" : "has"} no mirror partner.
+                  Pair {unpaired > 1 ? "them" : "it"} in Wall setup.
+                </Text>
+              ) : pairs ? (
+                <Text style={[styles.dim, styles.viewRowText]}>Symmetric: the same climb both ways round.</Text>
+              ) : null}
+              <View style={styles.viewRowEnd}>
+                <LightButton connected={connected} onPress={light} />
+              </View>
+            </View>
 
             <View style={styles.actions}>
               <Pressable
@@ -342,9 +349,6 @@ export function ProblemViewScreen() {
                 onPress={() => router.push(`/problem/tick?id=${problem.id}&mirrored=${showMirrored ? 1 : 0}`)}
               >
                 <Text style={styles.primaryText}>Tick</Text>
-              </Pressable>
-              <Pressable style={[styles.btn, !connected && styles.disabled]} onPress={light} disabled={!connected}>
-                <Text style={styles.btnText}>{connected ? "Light it" : "Not connected"}</Text>
               </Pressable>
             </View>
 
@@ -488,6 +492,10 @@ const styles = StyleSheet.create({
   postBtn: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
   tickGrade: { color: theme.text, fontSize: 14, fontWeight: "600" },
   actions: { flexDirection: "row", gap: 8, marginTop: 4 },
+  viewRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  viewRowText: { flex: 1 },
+  /* Pushes the light button to the right, whatever is on the left. */
+  viewRowEnd: { marginLeft: "auto" },
   btn: {
     flex: 1,
     alignItems: "center",
