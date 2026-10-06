@@ -572,14 +572,46 @@ workspace pulls mbedtls too. On the hardware: every API 1 check passes, the
 ATT MTU is 247 as on the nRF, and the app lights problems on it. Why it is
 worth having: Wi-Fi (updates without a cable, control from a browser, which
 iOS cannot do over Bluetooth), a cheaper module, and flashing over USB for
-people building their own controllers. Not yet tested: many connections at
-once (allowed 10).
+people building their own controllers. Several phones at once: see the
+known gap under board names, below.
 
 *Found on the hardware:* Zephyr's ws2812-i2s driver always sends its whole
 buffer, sized for the devicetree's 1000 LEDs, whatever length it is given;
 the stale tail lit every LED in random colours. The firmware now hands it
 the whole buffer, dark past the chain. The ESP32-C6 would not enumerate
 through the J-Link's USB hub; plugged straight into the laptop it does.
+
+*Board names and picking a board (2026-10-05).* With two boards in range
+the app took whichever it heard first, so a problem could light on the
+wrong wall, and every board in OpenBoard mode looked the same.
+
+- **Board names**, firmware 1.2.0 (`dev`): setting `0x05`, up to 19 bytes
+  of UTF-8 (no control characters, no space at either end), saved on the
+  board and advertised in its scan response as `OpenBoard <name>`, at once
+  when renamed. `SETTINGS` appends the name, `INFO` sets feature bit 5, and
+  the console has `board name`. Set from Settings → Board → Board name; a
+  named board shows its name in the connect chip. Hosts now find a board by
+  the name's first word, so an app built for exact "OpenBoard" does not see
+  a named board. A name in the advertisement itself, rather than a field
+  needing an assigned Bluetooth SIG id, keeps it visible to any scanner.
+- **The picker:** scanning listens until 2 s after the first board is
+  heard, so it hears every board in range. Each wall remembers, on the
+  phone, the board it last connected to, and connecting takes that one at
+  once. With none remembered, the only board in range is taken; anything
+  else (several boards, or only boards that are not this wall's) opens a
+  picker: name, the end of the address, signal strength, nearest first, the
+  wall's own board marked. Another board is never taken without asking.
+- **Forcing it:** long-press the connect chip, or Settings → Board → Choose
+  a board…, drops the board in use and lists every board in range, even one.
+
+Checked on the Pixel with both bench boards, and with the hardware check
+tool against each.
+
+*Known gap:* one phone at a time. When a second phone connects, the
+firmware disconnects the first (`connected()` in `bt_setup.c`), so picking
+a board someone else is using takes it from them. The fix is in the
+firmware: refuse a second connection, or say the board is busy, so the
+picker can show it.
 
 *Next, optionally:* gamma correction.
 
