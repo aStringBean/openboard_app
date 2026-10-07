@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { BoardPicker } from "../src/components/BoardPicker";
 import { ConnectChip } from "../src/components/ConnectChip";
+import { ConnectionNotice } from "../src/components/ConnectionNotice";
 import { AppProvider } from "../src/state/AppProvider";
 import { theme } from "../src/theme";
 
@@ -31,6 +32,7 @@ export default function RootLayout() {
               }}
             />
             <BoardPicker />
+            <ConnectionNotice />
           </AppProvider>
         </KeyboardProvider>
       </SafeAreaProvider>

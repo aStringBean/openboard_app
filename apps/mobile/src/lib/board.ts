@@ -43,7 +43,8 @@ let notifications: Subscription | null = null;
 let queue: Promise<unknown> = Promise.resolve();
 
 export type ConnectionState =
-  | { status: "idle" }
+  /* notice: why a connection ended, when the app did not end it. */
+  | { status: "idle"; notice?: string }
   | { status: "scanning" }
   | { status: "connecting"; name: string }
   /* Several boards in range, or not the one this wall used: the user picks. */
@@ -224,7 +225,7 @@ export async function connect(
   }
 
   if (candidates.size === 0) {
-    setState({ status: "error", message: "No board found. Is it powered, and not connected to something else?" });
+    setState({ status: "error", message: "No board found. Is it powered and in range?" });
     return;
   }
 
@@ -271,8 +272,15 @@ async function connectTo(found: Device): Promise<void> {
     chunkSize = Math.max(20, (withMtu.mtu ?? 23) - 3);
 
     withMtu.onDisconnected(() => {
+      /* Already forgotten: the app ended this link itself (disconnect). */
+      if (device?.id !== withMtu.id) return;
       forget();
-      onState({ status: "idle" });
+      /* The board ended it. Boards serve one phone at a time, and a phone
+       * that connects takes the board, so that is the likely reason. */
+      onState({
+        status: "idle",
+        notice: "Disconnected: another phone connected to the board, or it went out of range.",
+      });
     });
 
     const info = protocol === "openboard" ? await openSession(withMtu) : null;
@@ -304,6 +312,7 @@ export async function disconnect(): Promise<void> {
   const d = device;
   forget();
   if (d) await manager.cancelDeviceConnection(d.id).catch(() => {});
+  if (state.status === "connected") setState({ status: "idle" });
 }
 
 export const isConnected = (): boolean => device !== null;
