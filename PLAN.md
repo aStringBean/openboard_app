@@ -572,8 +572,8 @@ workspace pulls mbedtls too. On the hardware: every API 1 check passes, the
 ATT MTU is 247 as on the nRF, and the app lights problems on it. Why it is
 worth having: Wi-Fi (updates without a cable, control from a browser, which
 iOS cannot do over Bluetooth), a cheaper module, and flashing over USB for
-people building their own controllers. Several phones at once: see the
-known gap under board names, below.
+people building their own controllers. Several phones at once: one at a
+time, by design (below).
 
 *Found on the hardware:* Zephyr's ws2812-i2s driver always sends its whole
 buffer, sized for the devicetree's 1000 LEDs, whatever length it is given;
@@ -607,11 +607,28 @@ wrong wall, and every board in OpenBoard mode looked the same.
 Checked on the Pixel with both bench boards, and with the hardware check
 tool against each.
 
-*Known gap:* one phone at a time. When a second phone connects, the
-firmware disconnects the first (`connected()` in `bt_setup.c`), so picking
-a board someone else is using takes it from them. The fix is in the
-firmware: refuse a second connection, or say the board is busy, so the
-picker can show it.
+*Decided (2026-10-07): one phone at a time, and connecting takes the board.*
+People choose their next climb on their phones while waiting for a turn. A
+phone that stayed connected would light every problem it scrolled past, and
+two phones on one board would change the climb under whoever is on it. So
+a board serves one host, a phone that connects takes it, and the phone it
+had is disconnected; the board keeps advertising so it can always be taken.
+Written into the spec (section 2).
+
+*Hand-over made clean (firmware 1.2.1, 2026-10-07).* The takeover worked,
+but the old phone's link closing a moment later still ran its clean-up
+against the new phone: replies were switched off, and its half-received
+packet and frame thrown away. Data still in flight from the old phone was
+also fed to the new one. Now the new host starts clean, a replaced host's
+late close changes nothing, its stray data is dropped, and replies go only
+to a host that has itself subscribed (the stack's per-connection check,
+not a flag shared by every host). Checked on the C6: the phone took the
+board from the laptop mid-frame and got every reply.
+
+*The phone that loses the board is told:* "Disconnected: another phone
+connected to the board, or it went out of range", for a few seconds, under
+the header. Connection errors, which were never shown before, appear the
+same way.
 
 *Next, optionally:* gamma correction.
 
